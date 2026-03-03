@@ -1,0 +1,417 @@
+Original prompt: Build a game where you play as Nick the Tree Man - cut limbs from trees so they dont fall onto houses cars or priceless heirlooms. trees have physics and fall depending on size/wedge/dead areas
+
+- Initialized project with `index.html`, `styles.css`, and `game.js` scaffold plan.
+- Implementing first playable build with canvas gameplay, deterministic stepping hooks, and tree-fall physics factors (size, wedge, deadness).
+- Switched controls to Fruit Ninja-style slicing via pointer drag speed/intersection checks.
+- Implemented tree physics model using size resistance, user wedge bias, wind, lean, and dead-area bias.
+- Added hazard collision checks against fallen trunks and level/reputation progression states.
+- Exposed `window.render_game_to_text` and deterministic `window.advanceTime(ms)` for automated testing.
+- Added detached limb debris physics: each cut branch now becomes a falling object with gravity, bounce, and spin.
+- Detached limbs can now collide with hazards and cause damage before level scoring resolves.
+- Added `Tab`/`Shift+Tab` tree cycling for faster multi-tree control.
+- HUD and `render_game_to_text` now include active debris state for debugging/automation.
+- Re-ran Playwright client (`web_game_playwright_client.js`) against `file://.../index.html` using `test-actions.json`; no `errors-*.json` emitted.
+- Added focused debris verification run (`test-actions-debris.json`) confirming live falling limb objects in both screenshot and `render_game_to_text` (`activeDebris > 0`).
+- Visual verification complete on gameplay and overlay screenshots in `output/web-game` and `output/web-game-debris`.
+- TODO: tune penalties/reputation pacing for Level 3+ (currently can drop quickly on bad cascades).
+- TODO: if environment allows stable local HTTP serving, switch tests from `file://` back to `http://localhost` path.
+- Reworked controls to remove drag requirement: branch cutting is now keyboard-side based (A=left, B/D=right) with tier selection (Down/1 lower, Up/2 upper).
+- Tree generation now uses explicit low/high branch tiers with occasional oversized branches for harder weight-management cases.
+- Removed heirloom hazards; only houses and cars spawn as protected targets.
+- Added strict trunk-crash rule tracking (`trunkCrashesThisLevel`) and game-over handling when a trunk hits protected structures.
+- Added auto-select of next active tree after the current selected tree finishes falling.
+- Updated Playwright action scripts for keyboard model and re-ran visual/state verification on `output/web-game`, `output/web-game-playing`, and `output/web-game-debris`.
+- Fixed regression: restored pointer-swipe cutting by reconnecting `movePointer` to `applySlashSegment`.
+- Lowered swipe speed threshold (`MIN_SLASH_SPEED`) so normal swipes register consistently.
+- Added rapid click-chain fallback (`lastTap`) so automated and touch-like swipe bursts also cut.
+- Added swipe-specific Playwright test payload (`test-actions-swipe.json`) and verified `limbsCut` increases in `output/web-game-swipe/state-0.json`.
+- Simplified consequences: only trunk impacts count against houses/cars; detached branch debris no longer affects outcomes.
+- Removed manual `Space` fall trigger; trees now fall only from physics imbalance (cuts + wedge + deadness + wind).
+- Changed cut visuals so severed branches disappear cleanly (no remaining stubs).
+- Updated menu text and state output to match the simplified trunk-focused rules.
+- Re-ran Playwright verification with updated keyboard flow and swipe-specific payload; confirmed swipe cutting still increments `limbsCut`.
+- Removed branch-debris simulation code paths; cut branches now only affect trunk balance and disappear.
+- Level resolution now evaluates as soon as all trunks have fallen (no debris settling phase).
+- Removed manual `Space` fall trigger; falls occur only from physics imbalance.
+- Revalidated with Playwright (`test-actions.json`, `test-actions-swipe.json`) and confirmed swipe cutting still works while hazard damage is trunk-only.
+- Added hazard safety planner in level generation: hazards are only placed if every tree still has at least one collision-free fall direction.
+- Added per-tree safety metadata (`safeDirections`, `safeDirectionHint`) and HUD display for recommended safe side.
+- Added and ran `verify-safety.js` (120 randomized starts) to confirm all generated trees had >=1 safe fall direction.
+- Kept trunk-only damage rule and physics-only fall trigger while preserving swipe and keyboard branch cutting.
+- Updated tree generation for more natural structure: curved trunks, canopy clustering, and tiered V-shaped branch pairs.
+- Branch geometry now uses splay angles from trunk axis so limbs naturally form upward V patterns.
+- Enhanced trunk rendering with curved/tapered layered strokes and subtle canopy mass near top.
+- Added visual test payload (`test-actions-visual.json`) and revalidated screenshots (`output/web-game-visual`).
+- Re-ran swipe cut validation and safety verifier (`verify-safety.js`): still `ok=true` across 120 randomized starts.
+- Added creative level variety system with rotating contracts (`Main Street Shift`, `Storm Watch`, `Golden Hour Rush`) that modify wind/gust behavior, branch pressure, and level feel.
+- Added tree species archetypes (`Oak`, `Cedar`, `Poplar`) with distinct trunk/branch generation parameters and species-specific rendering palettes.
+- Added dynamic gust event simulation with telegraphed HUD status and animated wind trails; gusts now contribute to real imbalance physics.
+- Added flow streak mechanic from chained cuts (`flowStreak`, `bestFlow`) plus positive level-end reputation bonus for clean high-flow rounds.
+- Upgraded HUD with contract banner, gust countdown/active direction, flow meter, and per-tree species readout.
+- Enhanced `render_game_to_text` with `contract`, `gust`, `flow`, and per-tree `species` fields for automation/debugging.
+- Updated overlay panel layout to auto-size by line count to prevent text clipping as menu/report copy grows.
+- Added focused creative test payloads: `test-actions-creative-gust.json` and `test-actions-creative-swipe.json`.
+- Playwright validation run: `test-actions-playing.json` -> `output/web-game-creative` (state/screenshot verified; expected trunk-fail gameover possible from scripted unsafe cuts).
+- Playwright gust validation run: `test-actions-creative-gust.json` -> `output/web-game-creative-gust` (confirmed active gust state and visible wind streaks; `state-2.json` shows `gust.active=true`).
+- Playwright swipe regression run: `test-actions-creative-swipe.json` -> `output/web-game-creative-swipe` (confirmed swipe still cuts: `limbsCut=1`).
+- Safety invariant rechecked after creative changes: `node verify-safety.js` => `ok=true` across 120 randomized starts.
+- TODO: consider adding contract-specific hazard art variants (construction cones, parked trucks) while preserving trunk-only damage logic.
+- TODO: tune flow bonus scaling against late-level difficulty once more playtesting data exists.
+- Second creative pass added contract personality details (`accent`, `ambient`, `introCallout`) for stronger per-level vibe without changing core trunk-only failure rules.
+- Added ambient simulation layer by contract:
+  - `pollen` drift for Main Street
+  - `rain` streaks + occasional lightning flashes during gusts for Storm Watch
+  - `firefly` glow swarm system for Golden Hour
+- Added cinematic callout system (`addCallout`) with timed floating banners for:
+  - level intros
+  - gust announcements
+  - flow streak milestones (`x3`, `x5`, `x7`)
+- Added projected fall guide for selected trees (`getProjectedFall`) rendered as a dashed ghost trunk line, color-coded for likely-safe vs risky direction.
+- Added style rank logic (`getStyleRank`) and surfaced it in level clear/victory overlays (`Steady`, `Clean`, `Legendary`, `Mythic`, `Busted`).
+- Extended `render_game_to_text` with richer creative/debug state:
+  - `contract.ambient`
+  - `callouts[]`
+  - `lightningFlash`
+  - per-tree `projectedFall`
+  - compact `levelReport` summary when present
+- Added ambient/callout/lightning updates into main update loop and rendering order in `drawScene`.
+- Adjusted callout vertical placement to avoid overlap with top contract banner.
+- Re-ran Playwright validation:
+  - `test-actions-playing.json` -> `output/web-game-creative2`
+  - `test-actions-creative-gust.json` -> `output/web-game-creative2-gust`
+  - `test-actions-creative-swipe.json` -> `output/web-game-creative2-swipe`
+  - `test-actions-visual.json` -> `output/web-game-creative2-visual`
+- Visual checks confirm ambient particles, ghost fall guide, and callout banners rendering correctly; swipe cuts still register and trunk-only hazard logic remains intact.
+- Safety verification after creative changes: `node verify-safety.js` still returns `ok=true` across 120 runs.
+- TODO: consider exposing a debug-only level selector for deterministic testing of contract-specific weather scenes (especially Storm Watch rain/lightning) without full progression.
+- Third creative escalation pass implemented with higher-impact systems visible from Level 1.
+- Added district world layer (`DISTRICTS`): rotating neighborhood identity per level with unique names/taglines and palette-driven art for hills, grass, road, fence, and hazard color variants.
+- Added boss-tree encounters (`createBossTree`) and enabled odd-level boss presence (including level 1 for immediate variety):
+  - oversized trunks and heavier branch sets
+  - extra branch fans for high-pressure weight management
+  - boss aura rendering and HUD status tracking (`bossTreeId`, remaining limbs)
+- Added cinematic direction systems:
+  - camera shake model (`camera.trauma`) with trauma events on cuts/gusts/crashes
+  - adrenaline slow-motion windows when a tree starts falling (`adrenaline.timer`, `getTimeScale`)
+- Added environmental wildlife layer:
+  - perched birds seeded on high branches each level
+  - birds launch/fly off when nearby branches are cut or whole trees begin falling
+- Expanded world rendering:
+  - district roads/fence overlays
+  - district-tinted houses/cars in `drawHazard`
+  - bird rendering + boss halo treatment
+  - shake applied to world objects while HUD stays readable
+- Strengthened HUD with creative telemetry:
+  - district name and adrenaline status
+  - boss status line with live limb count
+  - selected-tree projected drift confidence
+- Enhanced narrative/callout flow:
+  - district intro callout
+  - boss encounter callout
+  - existing contract/gust/flow callouts retained
+- `render_game_to_text` extended again with district/boss/camera/adrenaline/bird state and per-tree `isBoss` for automation/debugging.
+- Revalidated with Playwright:
+  - `test-actions-playing.json` -> `output/web-game-creative3`
+  - `test-actions-creative-swipe.json` -> `output/web-game-creative3-swipe`
+  - `test-actions-creative-gust.json` -> `output/web-game-creative3-gust`
+  - `test-actions-visual.json` -> `output/web-game-creative3-visual`
+  - plus swipe regression using `test-actions-swipe.json` -> `output/web-game-creative3-swipe-regression`
+- Verified in state output:
+  - boss now appears on level 1 (`bossTreeId: "boss-1"`)
+  - district metadata present
+  - birds and cinematic state fields populated
+  - swipe cuts still register (`limbsCut` increases)
+- Safety verification rerun after boss-on-level-1 change: `node verify-safety.js` still reports `ok=true` across 120 randomized starts.
+- TODO: add district-specific hazard geometry silhouettes (not just color variants), e.g. row-house vs bungalow footprints and utility truck cars.
+- TODO: expose a non-cheat debug hotkey to cycle district/contract seeds for deterministic QA screenshots.
+- UI/graphics polish pass focused on readability + production-style visual depth while preserving gameplay rules and controls.
+- Added reusable HUD primitives:
+  - `drawPanel(...)` for glass-like rounded cards
+  - `drawMeter(...)` for compact labeled stat bars
+- Reworked background art direction:
+  - sun bloom + atmospheric gradient tuning
+  - distant mountain silhouette layer
+  - improved cloud layering and parallax drift feel
+  - cleaner district road/fence composition with better depth separation
+- Enhanced hazard art:
+  - ground contact shadows
+  - house window/siding details
+  - car gloss and hubcap details
+  - district palette integration retained
+- Enhanced tree rendering:
+  - stronger ground shadows based on lean angle
+  - pulsing selected-tree ring
+  - subtle bark texture striping
+  - boss aura pulse improved
+- Upgraded Nick character sprite (still simple style but clearer silhouette and tool read).
+- Improved VFX look:
+  - brighter slash trails with cleaner contrast
+  - wood chips switched from square pixels to circular particles
+- HUD redesign:
+  - left card now uses progress bars for Reputation/Wind/Flow
+  - center mission card retains contract context with clearer typography
+  - right selected-tree card retains tactical info plus risk meter
+  - district/adrenaline/boss status integrated cleanly
+- Callout UX improved:
+  - reduced clutter to latest two callouts only
+  - moved callouts lower-left so they no longer block center playfield
+- Overlay panels restyled with stronger typographic hierarchy and cleaner card treatment.
+- Added subtle global post-processing (`drawScreenFx`) for vignette + scanline texture depth.
+- Playwright verification runs completed after visual pass:
+  - `test-actions-visual.json` -> `output/web-game-ui1`
+  - `test-actions-playing.json` -> `output/web-game-ui2`
+  - `test-actions-swipe.json` -> `output/web-game-ui-swipe`
+  - `test-actions-creative-gust.json` -> `output/web-game-ui-gust`
+- Visual inspections confirm improved readability and richer scene depth; swipe cutting still increments `limbsCut` and core controls remain intact.
+- Safety check rerun: `node verify-safety.js` => `ok=true` across 120 random starts.
+- TODO: if wanted, next polish can add crisp iconography for HUD rows (wind/flow/reputation) and separate typography families for title vs body.
+- Difficulty rebalance pass: branch cutting now requires decision-making; removed one-swipe side-clear behavior.
+- Added per-branch durability system:
+  - each branch now has `maxHp`, `hp`, and transient `hitFlash`
+  - durability scales with thickness, tier, branch size, deadness, and boss status
+  - boss branches get higher durability ranges
+- Added branch hit model (`strikeBranch`) so partial damage no longer instantly severs every branch.
+- Swipe cutting reworked (`applySlashSegment`):
+  - slash now has finite power based on speed + segment length
+  - per swipe, target count is limited (normally 1, very fast slash can reach 2)
+  - only one branch per tree can be hit by a single slash sweep
+  - slash consumes power by branch effort, preventing full-side clears
+- Keyboard/tap cuts now apply controlled damage instead of guaranteed severing; thick limbs require repeated cuts.
+- Candidate branch selection for keyboard now uses impact-per-remaining-health, making side/tier choice matter more.
+- Added branch damage readability in visuals:
+  - damaged branch tinting and notch marks
+  - `Damaged Limbs` stat added in selected-tree HUD panel
+- Extended text-state output with tactical branch-health summaries:
+  - `damagedBranches`
+  - `avgBranchIntegrity`
+- Updated menu copy to explicitly note tougher limbs and no one-swipe side clears.
+- Playwright verification runs after rebalance:
+  - `test-actions-playing.json` -> `output/web-game-challenge-playing`
+  - `test-actions-swipe.json` -> `output/web-game-challenge-swipe`
+  - `test-actions-creative-swipe.json` -> `output/web-game-challenge-creative-swipe`
+  - `test-actions-visual.json` -> `output/web-game-challenge-visual`
+- Verification observations:
+  - state now commonly shows partial branch damage (`damagedBranches > 0`) without immediate sever (`cutBranches` unchanged)
+  - swipes still cut when repeated, but no longer clear an entire side in one gesture
+- Safety invariant still holds after rebalance: `node verify-safety.js` -> `ok=true` across 120 random starts.
+- TODO: tune durability curve by level (e.g., Level 1 slightly softer, Level 4+ harder) if players report early levels too punishing.
+- Character art request implemented: Nick now visibly has a black beard, a fiddle, and a chainsaw.
+- Updated `drawNick()` sprite details:
+  - added black beard + eyebrow accents on face
+  - added left-hand fiddle body with string details and bow
+  - replaced prior handheld tool with a clearer red chainsaw + blade teeth on right hand
+- Verified rendering with Playwright visual snapshot:
+  - `test-actions-visual.json` -> `output/web-game-nick-gear/shot-0.png`
+- Syntax check passes (`node --check game.js`).
+- Added jump mechanic tied to `Space`:
+  - New physics fields `nickY`/`nickVy` in state.
+  - Added constants `NICK_GRAVITY` and `NICK_JUMP_VELOCITY`.
+  - Added `jumpNick()` and integrated vertical motion/grounding into `updateNick(dt)`.
+  - `handleKeyDown` now consumes Space (including from menu start) and triggers jump while playing.
+  - `drawNick()` now renders body at jump offset while keeping shadow anchored to ground.
+- Added `Saw`/`Axe` control modes with `X` toggle:
+  - New state field `controlMode` (`"saw"` default).
+  - HUD now shows active mode.
+  - `render_game_to_text` now exports `controlMode` and `nick` jump telemetry.
+- Added axe-felling system to force directional trunk falls by sequence:
+  - Per-tree axe state via `createAxePlan(...)` with dynamic `notchNeed`/`backNeed`.
+  - Trees now include `axe` + `axeBias`; imbalance model includes `axeBias` moment.
+  - New `axeChopSelectedTree(side)` implements:
+    - notch-side selection,
+    - notch progression,
+    - opposite-side back-cut progression,
+    - hinge-release forced fall toward notch side.
+  - Added callouts for notch/back-cut progression and hinge release.
+  - Added trunk chop visual markers in `drawTree()` (notch + back-cut marks near base).
+  - Added axe flash decay in `updateTrees()` and auto-fall eligibility from axe bias.
+  - `render_game_to_text` now includes per-tree `axe` progress + bias.
+- Input routing updates:
+  - In Saw mode, `A`/`B`/`D` keep branch-cut behavior.
+  - In Axe mode, `A`/`B`/`D` do trunk chops (notch/back-cut sequence).
+  - Swipe/tap branch slicing is disabled while in Axe mode.
+- Menu instructions updated to document:
+  - `X` for Saw/Axe mode,
+  - Axe sequence concept,
+  - `Spacebar` jump.
+- Verification:
+  - `node --check game.js` passed.
+  - Playwright client run with Space-inclusive actions:
+    - `test-actions-jump.json` -> `output/web-game-jump`.
+  - Focused jump snapshot run:
+    - `test-actions-jump-peek.json` -> `output/web-game-jump-peek`.
+    - Confirmed airborne state in text output (`nick.yOffset = -112.1`, `airborne = true`).
+  - Focused axe-mode scripted run (Playwright API) to exercise `X` toggle and notch/back-cut progression:
+    - Output: `output/web-game-axe-mode`.
+    - Confirmed hinge-release forced fall: selected tree shows `axe.stage = "released"`, `fallen = true` and callout `"Hinge release: TIMBER RIGHT"`.
+  - Visual checks completed on:
+    - `output/web-game-jump-peek/shot-0.png`
+    - `output/web-game-axe-mode/shot-0.png`
+  - No new `errors-*.json` files in these runs.
+  - Safety verifier re-run: `node verify-safety.js` => `{ "ok": true, "runs": 120 }`.
+- TODO: if we want automated `X`-mode regression in the shared web-game client flow, extend the skill client key map to include `x` and `d` so axe-mode tests can be fully expressed via actions JSON only.
+- Additional regression check after axe/jump patch:
+  - Playwright client swipe run `test-actions-swipe.json` -> `output/web-game-axe-regression-swipe`.
+  - Confirmed saw mode still cuts branches (`totals.limbsCut = 2` in `state-0.json`).
+  - No `errors-*.json` emitted.
+- Added Nick speech-bubble taunts and fiddle-dance showtime mode.
+- New Nick quote lines (exact text):
+  - "I AM JUAN VALDEZ!"
+  - "Dangflabbit!"
+  - "Rabscallion trees don't have a chance around me!"
+- Added showtime state model:
+  - `state.showtime` with active/phase/sway/arm swing/note timer/quote timer.
+  - `state.nickSpeech` + `state.nickQuoteIndex` + `state.nickNotes` for bubble + music-note visuals.
+- Added helpers:
+  - `nextNickQuote`, `setNickSpeech`, `spawnNickNote`, `toggleNickShowtime`, and `getShowtimeButtonRect`.
+- Input/options:
+  - Press `V` in gameplay to toggle fiddle+dance mode.
+  - Click HUD button `Play Fiddle + Dance (V)` / `Stop Fiddle Dance (V)` to toggle with pointer.
+- Nick animation upgrades while showtime is active:
+  - Dance sway/tilt and arm swing.
+  - Faster bow movement across fiddle.
+  - Floating musical note particles around Nick.
+- Added speech bubble rendering near Nick with timed fade and wrapping, including tail anchored to Nick.
+- HUD updates:
+  - New `Fiddle+dance: ON/OFF` status line.
+  - Interactive showtime toggle button in HUD.
+- Menu copy updates:
+  - Added instructions for `V` and click-based showtime toggle.
+  - Added note that Nick shouts in a speech bubble while performing.
+- `render_game_to_text` extended under `nick`:
+  - `danceOffset`, `showtime`, `speech`, `notes`.
+- Level start handling:
+  - Clears stale note particles each level.
+  - If showtime remains enabled between levels, primes quote/timers and shows a fresh line.
+- Verification:
+  - `node --check game.js` passed.
+  - Playwright client run (required skill loop):
+    - `test-actions-showtime.json` -> `output/web-game-showtime` (button toggle on/off + speech state).
+    - `test-actions-showtime-on.json` -> `output/web-game-showtime-on` (showtime active with visible bubble and line).
+    - `test-actions-playing.json` -> `output/web-game-showtime-regression` (baseline control sanity after changes).
+  - Custom Playwright script run for `V` hotkey and quote rotation:
+    - `output/web-game-showtime-v/heard.json` captured all three lines in sequence.
+  - No `errors-*.json` emitted in these runs.
+  - Visual checks completed on:
+    - `output/web-game-showtime-on/shot-0.png` (speech bubble + button visible)
+    - `output/web-game-showtime-v/shot-0.png`
+  - Safety verifier re-run: `node verify-safety.js` -> `{ "ok": true, "runs": 120 }`.
+- Added protected `oldlady` hazard type and integrated it into procedural hazard generation.
+  - `createHazards(...)` now samples `house/car/oldlady` and still enforces tree safety constraints.
+  - Post-pass conversion ensures at least one old lady appears when a safe placement exists.
+  - Hazard instances now include `impactFlash` for dramatic crash rendering.
+- Added old-lady protection objective plumbing:
+  - New helper `getOldLadyCounts()` used in HUD/report/text output.
+  - Level start callout now announces old-lady protection count.
+  - HUD selected panel now shows `Old Ladies Safe: saved/total`.
+- Added dramatic crash system for houses/cars:
+  - New state `crashBursts` and effect lifecycle (`spawnCrashBurst`, `updateCrashBursts`, `drawCrashBursts`).
+  - `settleTreeImpact(...)` now spawns burst effects per impact and increases trauma.
+  - Damaged hazards render with stronger jitter, flame/smoke styling, and intensified impact markups.
+  - Scene draw order updated to render crash bursts in-world.
+- Added occasional moving tree cat system:
+  - New state `treeCat` plus branch-selection/movement logic (`spawnTreeCat`, `chooseTreeCatBranch`, `beginTreeCatMove`, `updateTreeCat`).
+  - Cat moves branch-to-branch across safe live trees and can emergency-jump if a tree starts falling.
+  - Cat draw layer added (`drawTreeCat`) with perched/moving visuals.
+- Added fail condition when cat branch is cut:
+  - `checkCatBranchSever(...)` called in `severBranch(...)`.
+  - On cat branch cut: cat turns red, fades over time, callout triggers, and level immediately fails via `triggerImmediateFailure("cat", ...)`.
+- Added immediate-failure helper and reason tracking:
+  - New state field `failReason`.
+  - New `triggerImmediateFailure(reason, message)` for non-standard fail paths (cat/oldlady).
+  - Game-over title now reflects cause (`Cat Rescue Failed`, `Civic Disaster`, fallback `Reputation Lost`).
+  - `levelReport` now carries `oldLadiesSaved`, `oldLadiesHit`, `failureReason`, `failureMessage`.
+- Old-lady hit consequence:
+  - If a trunk strikes an old lady in `settleTreeImpact`, immediate failure is triggered with clear message.
+- Menu/help copy updates:
+  - Added explicit objective lines about old ladies and branch-moving cats.
+- `render_game_to_text` expanded with:
+  - `failReason`, `oldLadies`, `cat`, `crashBursts`, hazard `impactFlash`, and extended `levelReport` failure + old-lady fields.
+- Verification:
+  - `node --check game.js` passed.
+  - Required Playwright client run:
+    - `test-actions-visual.json` -> `output/web-game-oldlady-visual`
+    - Verified in state: `oldLadies.total = 1`, moving `cat` present.
+  - Custom Playwright crash/drama scenario:
+    - `output/web-game-crash-drama`
+    - Verified `mode = gameover`, `failReason = "oldlady"`, damaged hazards include oldlady/house, `crashBursts > 0`.
+  - Custom Playwright cat-cut scenario:
+    - `output/web-game-cat-fail`
+    - Verified `failReason = "cat"` and cat fade progression (`fade` decays from `0.82` to `0.46`) with `dying=true`.
+  - Visual checks opened for:
+    - `output/web-game-oldlady-visual/shot-0.png`
+    - `output/web-game-crash-drama/shot-0.png`
+    - `output/web-game-cat-fail/shot-0.png`
+  - No `errors-*.json` emitted for these runs.
+  - Safety verifier rerun: `node verify-safety.js` => `{ "ok": true, "runs": 120 }`.
+- Additional post-change regression run:
+  - Playwright client `test-actions-playing.json` -> `output/web-game-oldlady-regression-playing`.
+  - Confirmed normal play loop still running (`mode=playing`) with new fields present (`oldLadies`, `failReason`, `cat`).
+  - No `errors-*.json` emitted.
+- Updated cat interaction per new rule: cats can remain on branches, but cat-occupied limbs are now protected from cuts.
+  - Added branch guard helpers: `isTreeCatOnBranch(...)`, `shooTreeCatFromBranch(...)`, and `shouldBlockCatBranchCut(...)`.
+  - `strikeBranch(...)` now blocks damage/sever attempts on cat-occupied limbs and emits a short player warning.
+  - `severBranch(...)` includes a defensive cat-branch guard path (no cut if occupied).
+  - Added `state.catGuardWarnAt` throttle to prevent callout spam from repeated blocked attempts.
+- Removed cat-fail path from branch removal flow:
+  - Replaced branch-missing behavior in `updateTreeCat(...)` so the cat relocates or escapes instead of triggering injury/failure.
+  - Cat failure state plumbing remains present for compatibility, but branch cuts no longer drive cat game-over.
+- Added player safety against falling trunks:
+  - New helpers compute Nick/trunk clearance across sampled fall arc: `getNickBodyPoint(...)`, `getTrunkTipForAngle(...)`, `getNickTrunkClearance(...)`, `getNickFallClearance(...)`, `chooseNickSafeFallDirection(...)`.
+  - `startFalling(...)` now chooses/adjusts fall direction to maximize Nick clearance.
+  - `updateNick(...)` now has live anti-hit logic:
+    - proactive steering toward safe side when projected clearance is low,
+    - hard displacement if a falling trunk gets inside a protection radius.
+- Updated menu copy to match behavior:
+  - replaced cat-loss text with: `Occasional tree cats move branch-to-branch; cat limbs are protected.`
+- Verification:
+  - Syntax check: `node --check game.js` passed.
+  - Required Playwright client runs (skill loop):
+    - `test-actions-playing.json` -> `output/web-game-player-safe-regression`
+    - `test-actions-swipe.json` -> `output/web-game-cat-guard-swipe`
+    - no `errors-*.json` in either output directory.
+  - Targeted cat protection scenario (dynamic Playwright):
+    - `output/web-game-cat-guard-targeted/report.json`
+    - `output/web-game-cat-guard-targeted2/report.json`
+    - both runs keep `mode="playing"`, `failReason=""`, and `limbsCut` unchanged during cat-branch slash attempts.
+  - Targeted player safety scenario (forced axe fall attempt toward Nick):
+    - `output/web-game-player-safe-targeted/report.json`
+    - result shows fall direction away from Nick-side exposure and `movedToSafeSide: true` while staying in active play.
+  - Visual inspections completed on:
+    - `output/web-game-player-safe-regression/shot-1.png`
+    - `output/web-game-cat-guard-targeted2/shot-before.png`
+    - `output/web-game-player-safe-targeted/shot-final.png`
+  - Safety verifier regression: `node verify-safety.js` => `{ "ok": true, "runs": 120 }`.
+- TODO: if desired, expose a small debug flag in `render_game_to_text` for the exact cat-branch block event count to make automated cat-protection assertions stronger than positional slash inference.
+- Intro/tutorial UX upgrade pass completed.
+- Replaced the old long text menu list with a bespoke tutorial-style bootcamp overlay (`drawMenuTutorialOverlay`).
+  - Added structured onboarding cards with explicit 3-step flow:
+    - Step 1: read tree lean and targeting.
+    - Step 2: intentional cutting + mode switching.
+    - Step 3: safe trunk drop sequencing.
+  - Added compact key-hint chips for core controls (`A/B/D`, `1/2`, `X`, `Q/E/W`, `Tab`, `Space`).
+  - Added mission-style bottom banner with stronger start CTA text.
+- Added dedicated intro rendering helpers:
+  - `drawMenuTutorialCard(...)`
+  - `drawMenuKeyHint(...)`
+  - `drawMenuTutorialOverlay(...)`
+- Updated `drawScene()` menu branch to use `drawMenuTutorialOverlay()`.
+- Axe visibility request implemented in character art:
+  - `drawNick()` now renders mode-specific right-hand tool:
+    - `Saw` mode: chainsaw (existing art retained).
+    - `Axe` mode: visible axe head + handle sprite in Nick's right hand.
+- Verification:
+  - Syntax check: `node --check game.js` passed.
+  - Required Playwright client runs:
+    - `test-actions-visual.json` -> `output/web-game-intro-tutorial`
+    - `test-actions-playing.json` -> `output/web-game-intro-regression-playing`
+    - No `errors-*.json` produced in either output directory.
+  - Targeted visual script run for menu + axe mode:
+    - `output/web-game-intro-axe-visual/shot-menu.png`
+    - `output/web-game-intro-axe-visual/shot-axe-mode.png`
+    - `output/web-game-intro-axe-visual/report.json` confirms `controlMode = "axe"` in captured axe screenshot state.
+  - Visual inspections opened for:
+    - `output/web-game-intro-axe-visual/shot-menu.png`
+    - `output/web-game-intro-axe-visual/shot-axe-mode.png`
+    - `output/web-game-intro-regression-playing/shot-1.png`
+  - Safety regression rerun: `node verify-safety.js` => `{ "ok": true, "runs": 120 }`.
+- TODO: if you want onboarding to be interactive next, add a short in-level guided sequence (highlight selected tree, force one saw cut, then one axe notch/back-cut) before full free-play starts.
