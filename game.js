@@ -12,9 +12,9 @@
     navigator.maxTouchPoints > 0 ||
     window.matchMedia("(pointer: coarse)").matches;
 
-  const TOUCH_BTN_Y = 644;
-  const TOUCH_BTN_H = 62;
-  const TOUCH_BAR_TOP = 632;
+  const TOUCH_BTN_Y = 614;
+  const TOUCH_BTN_H = 90;
+  const TOUCH_BAR_TOP = 602;
 
   function vibrate(ms) {
     if (navigator.vibrate) {
@@ -347,6 +347,163 @@
     touchBtnFlash[id] = 0.18;
   }
 
+  // --- Web Audio procedural sound system ---
+  let audioCtx = null;
+  function getAudio() {
+    if (!audioCtx) {
+      try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return null; }
+    }
+    if (audioCtx.state === "suspended") audioCtx.resume();
+    return audioCtx;
+  }
+  function playChop(pitch = 1, vol = 0.25) {
+    const ac = getAudio(); if (!ac) return;
+    const t = ac.currentTime;
+    const o = ac.createOscillator();
+    const g = ac.createGain();
+    const n = ac.createBufferSource();
+    const buf = ac.createBuffer(1, ac.sampleRate * 0.06, ac.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * 0.7;
+    n.buffer = buf;
+    const nGain = ac.createGain();
+    nGain.gain.setValueAtTime(vol * 0.6, t);
+    nGain.gain.exponentialRampToValueAtTime(0.001, t + 0.08);
+    n.connect(nGain).connect(ac.destination);
+    n.start(t); n.stop(t + 0.08);
+    o.type = "square";
+    o.frequency.setValueAtTime(220 * pitch, t);
+    o.frequency.exponentialRampToValueAtTime(80 * pitch, t + 0.07);
+    g.gain.setValueAtTime(vol * 0.3, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.1);
+    o.connect(g).connect(ac.destination);
+    o.start(t); o.stop(t + 0.1);
+  }
+  function playSever(big = false) {
+    const ac = getAudio(); if (!ac) return;
+    const t = ac.currentTime;
+    const dur = big ? 0.22 : 0.15;
+    const buf = ac.createBuffer(1, ac.sampleRate * dur, ac.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) {
+      const env = Math.exp(-i / (ac.sampleRate * dur * 0.25));
+      d[i] = (Math.random() * 2 - 1) * env;
+    }
+    const src = ac.createBufferSource();
+    src.buffer = buf;
+    const g = ac.createGain();
+    g.gain.setValueAtTime(big ? 0.35 : 0.25, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    const f = ac.createBiquadFilter();
+    f.type = "bandpass";
+    f.frequency.value = big ? 600 : 900;
+    f.Q.value = 1.2;
+    src.connect(f).connect(g).connect(ac.destination);
+    src.start(t); src.stop(t + dur);
+  }
+  function playTimber() {
+    const ac = getAudio(); if (!ac) return;
+    const t = ac.currentTime;
+    const o = ac.createOscillator();
+    const g = ac.createGain();
+    o.type = "sawtooth";
+    o.frequency.setValueAtTime(180, t);
+    o.frequency.exponentialRampToValueAtTime(45, t + 0.6);
+    g.gain.setValueAtTime(0.18, t);
+    g.gain.linearRampToValueAtTime(0.22, t + 0.15);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.65);
+    o.connect(g).connect(ac.destination);
+    o.start(t); o.stop(t + 0.65);
+    const buf = ac.createBuffer(1, ac.sampleRate * 0.35, ac.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1);
+    const n = ac.createBufferSource();
+    n.buffer = buf;
+    const ng = ac.createGain();
+    ng.gain.setValueAtTime(0.0, t);
+    ng.gain.linearRampToValueAtTime(0.15, t + 0.3);
+    ng.gain.exponentialRampToValueAtTime(0.001, t + 0.6);
+    const nf = ac.createBiquadFilter();
+    nf.type = "lowpass";
+    nf.frequency.value = 300;
+    n.connect(nf).connect(ng).connect(ac.destination);
+    n.start(t); n.stop(t + 0.6);
+  }
+  function playCrash(fatal = false) {
+    const ac = getAudio(); if (!ac) return;
+    const t = ac.currentTime;
+    const dur = fatal ? 0.7 : 0.45;
+    const buf = ac.createBuffer(1, ac.sampleRate * dur, ac.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) {
+      const env = Math.exp(-i / (ac.sampleRate * dur * 0.2));
+      d[i] = (Math.random() * 2 - 1) * env;
+    }
+    const src = ac.createBufferSource();
+    src.buffer = buf;
+    const g = ac.createGain();
+    g.gain.setValueAtTime(fatal ? 0.4 : 0.3, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    const f = ac.createBiquadFilter();
+    f.type = "lowpass";
+    f.frequency.value = fatal ? 400 : 600;
+    src.connect(f).connect(g).connect(ac.destination);
+    src.start(t); src.stop(t + dur);
+  }
+  function playFlowPing(streak) {
+    const ac = getAudio(); if (!ac) return;
+    const t = ac.currentTime;
+    const o = ac.createOscillator();
+    const g = ac.createGain();
+    o.type = "sine";
+    const baseNote = 440 * Math.pow(2, (streak - 1) / 12);
+    o.frequency.setValueAtTime(baseNote, t);
+    o.frequency.exponentialRampToValueAtTime(baseNote * 1.5, t + 0.08);
+    g.gain.setValueAtTime(0.15, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
+    o.connect(g).connect(ac.destination);
+    o.start(t); o.stop(t + 0.18);
+  }
+  function playImpact() {
+    const ac = getAudio(); if (!ac) return;
+    const t = ac.currentTime;
+    const o = ac.createOscillator();
+    const g = ac.createGain();
+    o.type = "sine";
+    o.frequency.setValueAtTime(80, t);
+    o.frequency.exponentialRampToValueAtTime(25, t + 0.25);
+    g.gain.setValueAtTime(0.3, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.3);
+    o.connect(g).connect(ac.destination);
+    o.start(t); o.stop(t + 0.3);
+  }
+
+  // --- Dust cloud / impact particles ---
+  state.dustClouds = [];
+  state.groundScars = [];
+  state.flowFlash = 0;
+
+  function spawnDustCloud(tree) {
+    const dir = Math.sign(tree.angle) || 1;
+    const tipX = tree.x + dir * tree.height * 0.48;
+    const count = 12 + Math.round(tree.height / 30);
+    for (let i = 0; i < count; i++) {
+      state.dustClouds.push({
+        x: tipX + rand(-tree.height * 0.3, tree.height * 0.3),
+        y: tree.baseY + rand(-8, 4),
+        vx: dir * rand(20, 120) + rand(-40, 40),
+        vy: -rand(30, 110),
+        size: rand(6, 22),
+        life: rand(0.5, 1.2),
+        maxLife: 0,
+        alpha: rand(0.3, 0.6),
+      });
+      const newest = state.dustClouds[state.dustClouds.length - 1];
+      newest.maxLife = newest.life;
+    }
+    if (state.dustClouds.length > 60) state.dustClouds.splice(0, state.dustClouds.length - 60);
+  }
+
   function getTouchButtons() {
     if (!isMobile) return [];
     if (state.mode !== "playing") return [];
@@ -355,11 +512,10 @@
     return [
       {
         id: "wedgeL",
-        label: "\u25C0",
-        sublabel: "WDG",
-        x: 20,
+        label: "\u25C0 WDG",
+        x: 14,
         y: TOUCH_BTN_Y,
-        w: 82,
+        w: 118,
         h: TOUCH_BTN_H,
         active: wedgeDir < 0,
         action() {
@@ -371,11 +527,10 @@
       },
       {
         id: "wedgeR",
-        label: "\u25B6",
-        sublabel: "WDG",
-        x: 110,
+        label: "WDG \u25B6",
+        x: 140,
         y: TOUCH_BTN_Y,
-        w: 82,
+        w: 118,
         h: TOUCH_BTN_H,
         active: wedgeDir > 0,
         action() {
@@ -388,9 +543,9 @@
       {
         id: "jump",
         label: "JUMP",
-        x: 210,
+        x: 274,
         y: TOUCH_BTN_Y,
-        w: 108,
+        w: 130,
         h: TOUCH_BTN_H,
         active: false,
         action() {
@@ -400,10 +555,10 @@
       },
       {
         id: "cutL",
-        label: "\u2694 L",
-        x: 336,
+        label: "\u2694 CUT L",
+        x: 420,
         y: TOUCH_BTN_Y,
-        w: 84,
+        w: 120,
         h: TOUCH_BTN_H,
         active: false,
         action() {
@@ -417,10 +572,10 @@
       },
       {
         id: "cutR",
-        label: "R \u2694",
-        x: 428,
+        label: "CUT R \u2694",
+        x: 548,
         y: TOUCH_BTN_Y,
-        w: 84,
+        w: 120,
         h: TOUCH_BTN_H,
         active: false,
         action() {
@@ -434,10 +589,10 @@
       },
       {
         id: "tierLow",
-        label: "LOW",
-        x: 790,
+        label: "LO",
+        x: 690,
         y: TOUCH_BTN_Y,
-        w: 80,
+        w: 78,
         h: TOUCH_BTN_H,
         active: state.activeTier === "low",
         action() {
@@ -446,11 +601,24 @@
         },
       },
       {
-        id: "tierHigh",
-        label: "HIGH",
-        x: 878,
+        id: "tierMid",
+        label: "MID",
+        x: 776,
         y: TOUCH_BTN_Y,
-        w: 82,
+        w: 78,
+        h: TOUCH_BTN_H,
+        active: state.activeTier === "mid",
+        action() {
+          state.activeTier = "mid";
+          vibrate(10);
+        },
+      },
+      {
+        id: "tierHigh",
+        label: "HI",
+        x: 862,
+        y: TOUCH_BTN_Y,
+        w: 78,
         h: TOUCH_BTN_H,
         active: state.activeTier === "high",
         action() {
@@ -461,9 +629,9 @@
       {
         id: "mode",
         label: state.controlMode === "axe" ? "AXE" : "SAW",
-        x: 970,
+        x: 950,
         y: TOUCH_BTN_Y,
-        w: 88,
+        w: 90,
         h: TOUCH_BTN_H,
         active: state.controlMode === "axe",
         action() {
@@ -480,10 +648,10 @@
       },
       {
         id: "nextTree",
-        label: "TREE\u25B6",
-        x: 1068,
+        label: "TREE \u25B6",
+        x: 1050,
         y: TOUCH_BTN_Y,
-        w: 96,
+        w: 216,
         h: TOUCH_BTN_H,
         active: false,
         action() {
@@ -533,14 +701,15 @@
   }
 
   function getBranchDurability(branch, treeIsBoss = false) {
+    const tierBonus = branch.tier === "high" ? 0.28 : branch.tier === "mid" ? 0.14 : 0;
     const base =
-      0.78 +
-      branch.thickness / 8.4 +
-      (branch.isBig ? 0.58 : 0) +
-      (branch.tier === "high" ? 0.22 : 0) +
-      (treeIsBoss ? 0.52 : 0) -
-      branch.deadness * 0.28;
-    return clamp(base, 0.95, treeIsBoss ? 4.4 : 3.2);
+      0.85 +
+      branch.thickness / 7.5 +
+      (branch.isBig ? 0.65 : 0) +
+      tierBonus +
+      (treeIsBoss ? 0.6 : 0) -
+      branch.deadness * 0.24;
+    return clamp(base, 1.0, treeIsBoss ? 5.2 : 3.8);
   }
 
   function createAxePlan(treeIsBoss, height, radius, deadness) {
@@ -576,7 +745,7 @@
   function createTree(id, x, level, contract) {
     const species = chooseSpecies(level);
     const height =
-      (rand(210, 310) + level * 10) * rand(species.heightMul[0], species.heightMul[1]);
+      (rand(230, 340) + level * 14) * rand(species.heightMul[0], species.heightMul[1]);
     const radius = rand(14, 24) * rand(species.radiusMul[0], species.radiusMul[1]);
     const deadness = clamp(
       rand(0.05, 0.42) + level * 0.02 + species.deadnessShift + (contract.deadnessBoost || 0),
@@ -587,64 +756,80 @@
     const lean = rand(-species.leanRange, species.leanRange);
     const trunkCurve = rand(-species.curveRange, species.curveRange);
     const branches = [];
+
+    const tierCount = level >= 3 ? 3 : 2;
     const tiers = [
-      { id: "low", baseHeight: rand(0.34 + species.lowTierShift, 0.5 + species.lowTierShift) },
-      { id: "high", baseHeight: rand(0.63 + species.highTierShift, 0.84 + species.highTierShift) },
-    ];
+      { id: "low", baseHeight: rand(0.22 + species.lowTierShift, 0.38 + species.lowTierShift) },
+      { id: "mid", baseHeight: rand(0.44, 0.58) },
+      { id: "high", baseHeight: rand(0.65 + species.highTierShift, 0.88 + species.highTierShift) },
+    ].slice(0, tierCount);
 
     let branchIndex = 0;
     for (const tier of tiers) {
-      const clusterCount =
-        tier.id === "high"
-          ? (Math.random() < 0.55 + species.clusterBoost * 0.5 ? 2 : 1)
-          : (Math.random() < 0.28 + species.clusterBoost ? 2 : 1);
+      const baseClusterChance = tier.id === "high"
+        ? 0.6 + species.clusterBoost * 0.5 + level * 0.06
+        : tier.id === "mid"
+          ? 0.45 + level * 0.06
+          : 0.3 + species.clusterBoost + level * 0.04;
+      const clusterCount = Math.random() < baseClusterChance ? (Math.random() < 0.2 + level * 0.08 ? 3 : 2) : 1;
+
       for (let cluster = 0; cluster < clusterCount; cluster += 1) {
-        const clusterOffset = (cluster - (clusterCount - 1) / 2) * 0.09;
+        const clusterOffset = (cluster - (clusterCount - 1) / 2) * 0.07;
         const anchorRatio = clamp(
           tier.baseHeight + clusterOffset + rand(-0.03, 0.03),
-          0.24,
+          0.18,
           0.95
         );
         const bigChance =
-          0.2 +
-          level * 0.06 +
-          (tier.id === "high" ? 0.1 : 0.03) +
-          cluster * 0.04 +
+          0.15 +
+          level * 0.08 +
+          (tier.id === "high" ? 0.12 : tier.id === "mid" ? 0.06 : 0.02) +
+          cluster * 0.05 +
           (contract.bigBranchBoost || 0);
-        const clusterBig = Math.random() < Math.min(0.75, bigChance);
+        const clusterBig = Math.random() < Math.min(0.8, bigChance);
         const baseVOpen =
-          rand(0.3, 0.62) + (tier.id === "high" ? 0.05 : 0) + species.splayBias;
+          rand(0.18, 0.7) + (tier.id === "high" ? 0.06 : tier.id === "mid" ? 0.02 : -0.04) + species.splayBias;
+
+        const asymmetry = rand(-0.35, 0.35) * (0.5 + level * 0.1);
 
         for (const side of [-1, 1]) {
-          const isBig = clusterBig && Math.random() < 0.76;
+          const sideSkip = side < 0
+            ? (asymmetry > 0.2 && Math.random() < 0.25)
+            : (asymmetry < -0.2 && Math.random() < 0.25);
+          if (sideSkip && branches.length > 2) continue;
+
+          const isBig = clusterBig && Math.random() < (0.6 + level * 0.06);
           const branchDeadness = clamp(
             rand(0, 0.72) + deadness * 0.35 + (isBig ? 0.06 : 0),
             0,
             1
           );
-          const baseLength = tier.id === "high" ? rand(62, 122) : rand(50, 106);
-          const sideVariance = rand(0.92, 1.08);
+          const baseLength = tier.id === "high" ? rand(68, 138) : tier.id === "mid" ? rand(55, 118) : rand(44, 98);
+          const sideVariance = rand(0.82, 1.18);
+          const sideMassBias = side < 0 ? (1 + asymmetry * 0.3) : (1 - asymmetry * 0.3);
           const length =
             baseLength *
               sideVariance *
               species.branchLengthMul *
-              (isBig ? rand(1.28, 1.58) : rand(0.9, 1.12)) +
-            branchDeadness * 16 +
-            level * 2;
+              sideMassBias *
+              (isBig ? rand(1.3, 1.65) : rand(0.85, 1.15)) +
+            branchDeadness * 18 +
+            level * 3;
           const thickness = clamp(
-            (length / 26) * rand(0.8, 1.2) * (isBig ? 1.16 : 0.94),
+            (length / 24) * rand(0.75, 1.25) * (isBig ? 1.2 : 0.92),
             3.5,
-            10.8
+            12.5
           );
           const mass =
-            (length / 86) *
-            (0.88 + branchDeadness * 1.12) *
-            (isBig ? 1.45 : 1) *
-            species.branchMassMul;
+            (length / 80) *
+            (0.88 + branchDeadness * 1.2) *
+            (isBig ? 1.5 : 1) *
+            species.branchMassMul *
+            sideMassBias;
           const splayAngle = clamp(
-            baseVOpen + rand(-0.08, 0.08) - branchDeadness * 0.1,
-            0.14,
-            0.88
+            baseVOpen + rand(-0.12, 0.12) - branchDeadness * 0.1 + (side < 0 ? asymmetry * 0.06 : -asymmetry * 0.06),
+            0.08,
+            0.92
           );
 
           const branch = {
@@ -666,6 +851,30 @@
           branch.hitFlash = 0;
           branches.push(branch);
           branchIndex += 1;
+
+          if (isBig && length > 85 && Math.random() < 0.3 + level * 0.1) {
+            const forkAngle = splayAngle + rand(-0.22, 0.22) + side * rand(0.05, 0.15);
+            const forkLength = length * rand(0.45, 0.7);
+            const forkBranch = {
+              id: `${id}-b${branchIndex}`,
+              side,
+              tier: tier.id,
+              cluster,
+              isBig: false,
+              mass: mass * rand(0.3, 0.5),
+              splayAngle: clamp(forkAngle, 0.08, 0.95),
+              heightRatio: clamp(anchorRatio + rand(0.03, 0.08), 0.2, 0.95),
+              length: forkLength,
+              thickness: clamp(thickness * 0.65, 3, 8),
+              deadness: clamp(branchDeadness + rand(-0.1, 0.15), 0, 1),
+              cut: false,
+            };
+            forkBranch.maxHp = getBranchDurability(forkBranch, false);
+            forkBranch.hp = forkBranch.maxHp;
+            forkBranch.hitFlash = 0;
+            branches.push(forkBranch);
+            branchIndex += 1;
+          }
         }
       }
     }
@@ -964,6 +1173,7 @@
     state.adrenaline.timer = 1;
     state.adrenaline.sourceTreeId = tree.id;
     addTrauma(0.34);
+    playTimber();
     addCallout(
       tree.isBoss ? "BOSS TIMBER MOMENT" : "Timber!",
       tree.isBoss ? "#ffd9a3" : "#f4efc3",
@@ -1049,10 +1259,10 @@
 
   function getShowtimeButtonRect() {
     return {
-      x: 34,
-      y: 224,
-      w: 248,
-      h: 44,
+      x: 12,
+      y: 206,
+      w: 260,
+      h: 28,
     };
   }
 
@@ -1693,6 +1903,9 @@
     state.lastCutAt = -999;
     state.windTrails = [];
     state.crashBursts = [];
+    state.dustClouds = [];
+    state.groundScars = [];
+    state.flowFlash = 0;
     state.birds = [];
     state.treeCat = null;
     state.catGuardWarnAt = -999;
@@ -1897,7 +2110,7 @@
       const massFactor =
         branch.mass ||
         (branch.length / 88) * (0.65 + branch.deadness * 1.2) * (branch.isBig ? 1.4 : 1);
-      const tierBonus = branch.tier === "high" ? 0.18 : 0;
+      const tierBonus = branch.tier === "high" ? 0.2 : branch.tier === "mid" ? 0.1 : 0;
       const heightFactor = 0.45 + branch.heightRatio + tierBonus;
       branchMoment += branch.side * massFactor * heightFactor;
       liveCount += 1;
@@ -2135,6 +2348,7 @@
 
     branch.hp = nextHp;
     branch.hitFlash = 0.24;
+    playChop(0.8 + branch.thickness * 0.04, 0.2 + damage * 0.06);
 
     const impactX = lerp(seg.x1, seg.x2, 0.56);
     const impactY = lerp(seg.y1, seg.y2, 0.56);
@@ -2310,17 +2524,26 @@
     state.lastCutAt = state.elapsed;
     state.flowTimer = 1.45;
     state.bestFlow = Math.max(state.bestFlow, state.flowStreak);
+    if (state.flowStreak >= 2) state.flowFlash = Math.min(1, state.flowStreak * 0.15);
     if (state.flowStreak === 3) {
-      addCallout("Smooth sequence x3", "#d8f8c4", 1.6);
+      addCallout("SMOOTH SEQUENCE x3", "#d8f8c4", 1.8);
+      addTrauma(0.06);
     } else if (state.flowStreak === 5) {
-      addCallout("Lumber legend x5", "#f5f1b8", 1.8);
+      addCallout("LUMBER LEGEND x5", "#f5f1b8", 2);
+      addTrauma(0.1);
     } else if (state.flowStreak === 7) {
-      addCallout("Unreal flow x7", "#ffd09e", 2);
+      addCallout("UNREAL FLOW x7!", "#ffd09e", 2.5);
+      addTrauma(0.14);
+    } else if (state.flowStreak === 10) {
+      addCallout("GODLIKE x10!!!", "#ff9060", 3);
+      addTrauma(0.2);
     }
     const impactX = (seg.x1 + seg.x2) * 0.5;
     const impactY = (seg.y1 + seg.y2) * 0.5;
-    spawnWoodChips(impactX, impactY, branch.side);
+    spawnWoodChips(impactX, impactY, branch.side, branch.isBig ? 1.4 : 1);
     frightenBirdsNear(impactX, impactY, 150, branch.side);
+    playSever(branch.isBig);
+    if (state.flowStreak >= 2) playFlowPing(state.flowStreak);
     vibrate(branch.isBig ? 35 : 20);
     addTrauma(branch.isBig ? 0.08 : 0.05);
 
@@ -2556,6 +2779,7 @@
     if (collisions > 0) {
       state.trunkCrashesThisLevel += collisions;
       addTrauma(0.62 + collisions * 0.15 + oldLadyHits * 0.22);
+      playCrash(oldLadyHits > 0);
       vibrate([40, 30, 60]);
       if (oldLadyHits > 0) {
         addCallout(
@@ -2691,7 +2915,9 @@
       const imbalance = computeTreeImbalance(tree);
 
       if (!tree.falling && !tree.fallen) {
-        const swayTarget = tree.lean * 0.6 + state.wind * 0.035 + imbalance * 0.045;
+        const gustSway = state.gust.active ? state.gust.dir * state.gust.strength * 0.12 : 0;
+        const windOsc = Math.sin(state.elapsed * 1.8 + tree.x * 0.01) * 0.008 * (1 + Math.abs(state.wind) * 2);
+        const swayTarget = tree.lean * 0.6 + state.wind * 0.05 + imbalance * 0.05 + gustSway + windOsc;
         tree.sway = lerp(tree.sway, swayTarget, clamp(dt * 2.7, 0, 1));
 
         const canAutoFall =
@@ -2721,6 +2947,9 @@
           tree.angle = Math.sign(tree.angle) * (Math.PI / 2);
           tree.falling = false;
           tree.fallen = true;
+          playImpact();
+          spawnDustCloud(tree);
+          state.groundScars.push({ x: tree.x + Math.sign(tree.angle) * tree.height * 0.5, y: tree.baseY, w: tree.height * 0.6, alpha: 0.7 });
           settleTreeImpact(tree);
           if (tree.id === state.selectedTreeId) {
             cycleSelectedTree(1);
@@ -2926,56 +3155,67 @@
 
     updateTrees(dt);
     updateNick(dt);
+    updateDustClouds(dt);
+    if (state.flowFlash > 0) state.flowFlash = Math.max(0, state.flowFlash - dt * 2.5);
+    for (const scar of state.groundScars) scar.alpha = Math.max(0, scar.alpha - dt * 0.15);
+    state.groundScars = state.groundScars.filter(s => s.alpha > 0.01);
+  }
+
+  function updateDustClouds(dt) {
+    for (const p of state.dustClouds) {
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.vy += 40 * dt;
+      p.vx *= 0.96;
+      p.size += dt * 12;
+      p.life -= dt;
+    }
+    state.dustClouds = state.dustClouds.filter(p => p.life > 0);
   }
 
   function drawPanel(x, y, w, h, opts = {}) {
-    const top = opts.top || "rgba(24, 40, 44, 0.82)";
-    const bottom = opts.bottom || "rgba(13, 25, 29, 0.7)";
-    const radius = opts.radius ?? 14;
-    const border = opts.border || "rgba(255, 255, 255, 0.16)";
+    const bg = opts.top || "rgba(20, 28, 34, 0.88)";
+    const radius = opts.radius ?? 3;
+    const border = opts.border || "rgba(80, 95, 110, 0.6)";
 
-    const g = ctx.createLinearGradient(x, y, x, y + h);
-    g.addColorStop(0, top);
-    g.addColorStop(1, bottom);
-    ctx.fillStyle = g;
+    ctx.fillStyle = bg;
     ctx.beginPath();
     ctx.roundRect(x, y, w, h, radius);
     ctx.fill();
 
     ctx.strokeStyle = border;
-    ctx.lineWidth = 1.2;
+    ctx.lineWidth = 1.5;
     ctx.beginPath();
     ctx.roundRect(x + 0.5, y + 0.5, w - 1, h - 1, radius);
     ctx.stroke();
+
+    ctx.fillStyle = "rgba(255, 255, 255, 0.04)";
+    ctx.fillRect(x + 1, y + 1, w - 2, Math.min(h * 0.35, 12));
   }
 
   function drawMeter(x, y, w, h, value, colorA, colorB, label, valueLabel) {
     const pct = clamp(value, 0, 1);
-    ctx.fillStyle = "rgba(6, 11, 14, 0.5)";
-    ctx.beginPath();
-    ctx.roundRect(x, y, w, h, 8);
-    ctx.fill();
+    ctx.fillStyle = "rgba(0, 0, 0, 0.55)";
+    ctx.fillRect(x, y, w, h);
 
-    const gw = Math.max(5, (w - 4) * pct);
-    const g = ctx.createLinearGradient(x, y, x + w, y);
-    g.addColorStop(0, colorA);
-    g.addColorStop(1, colorB);
-    ctx.fillStyle = g;
-    ctx.beginPath();
-    ctx.roundRect(x + 2, y + 2, gw, h - 4, 6);
-    ctx.fill();
+    const gw = Math.max(2, (w - 2) * pct);
+    ctx.fillStyle = colorA;
+    ctx.fillRect(x + 1, y + 1, gw, h - 2);
 
-    ctx.strokeStyle = "rgba(255, 255, 255, 0.18)";
+    ctx.strokeStyle = "rgba(80, 95, 110, 0.5)";
     ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.roundRect(x, y, w, h, 8);
-    ctx.stroke();
+    ctx.strokeRect(x, y, w, h);
 
-    ctx.fillStyle = "#f2f8f6";
-    ctx.font = "600 13px Avenir Next, Trebuchet MS, sans-serif";
-    ctx.fillText(label, x, y - 4);
-    ctx.font = "700 12px Avenir Next, Trebuchet MS, sans-serif";
-    ctx.fillText(valueLabel, x + w - ctx.measureText(valueLabel).width, y - 4);
+    if (label) {
+      ctx.fillStyle = "#d0dce8";
+      ctx.font = "700 11px monospace";
+      ctx.fillText(label, x, y - 3);
+    }
+    if (valueLabel) {
+      ctx.fillStyle = "#e8f0f8";
+      ctx.font = "700 11px monospace";
+      ctx.fillText(valueLabel, x + w - ctx.measureText(valueLabel).width, y - 3);
+    }
   }
 
   function drawBackground() {
@@ -3249,43 +3489,81 @@
       ctx.arc(left + hazard.w - 18, top + hazard.h - 2, 4, 0, Math.PI * 2);
       ctx.fill();
     } else if (hazard.type === "oldlady") {
+      const panicking = !hazard.damaged && state.trees.some(t => t.falling && Math.abs(t.x - hazard.x) < t.height * 0.7);
+      const wobble = panicking ? Math.sin(state.elapsed * 18) * 3 : 0;
+      const armWave = panicking ? Math.sin(state.elapsed * 12) * 0.4 : 0;
+
       ctx.fillStyle = "#3a2d2d";
-      ctx.fillRect(hazard.x - 11, top + hazard.h - 12, 8, 8);
-      ctx.fillRect(hazard.x + 3, top + hazard.h - 12, 8, 8);
+      ctx.fillRect(hazard.x - 11 + wobble, top + hazard.h - 12, 8, 8);
+      ctx.fillRect(hazard.x + 3 + wobble, top + hazard.h - 12, 8, 8);
 
       ctx.fillStyle = style.body;
       ctx.beginPath();
-      ctx.roundRect(hazard.x - 14, top + 26, 28, 34, 10);
+      ctx.roundRect(hazard.x - 14 + wobble, top + 26, 28, 34, 10);
       ctx.fill();
 
       ctx.fillStyle = "#dfcfba";
       ctx.beginPath();
-      ctx.arc(hazard.x, top + 16, 10, 0, Math.PI * 2);
+      ctx.arc(hazard.x + wobble, top + 16, 10, 0, Math.PI * 2);
       ctx.fill();
 
-      ctx.fillStyle = "rgba(245, 238, 223, 0.96)";
+      ctx.fillStyle = panicking ? "#fff" : "rgba(245, 238, 223, 0.96)";
+      const eyeSize = panicking ? 3.2 : 2;
       ctx.beginPath();
-      ctx.arc(hazard.x - 4, top + 14, 2, 0, Math.PI * 2);
-      ctx.arc(hazard.x + 4, top + 14, 2, 0, Math.PI * 2);
+      ctx.arc(hazard.x - 4 + wobble, top + 14, eyeSize, 0, Math.PI * 2);
+      ctx.arc(hazard.x + 4 + wobble, top + 14, eyeSize, 0, Math.PI * 2);
       ctx.fill();
+      if (panicking) {
+        ctx.fillStyle = "#222";
+        ctx.beginPath();
+        ctx.arc(hazard.x - 4 + wobble, top + 14, 1.5, 0, Math.PI * 2);
+        ctx.arc(hazard.x + 4 + wobble, top + 14, 1.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
 
+      ctx.save();
+      ctx.translate(hazard.x + 12 + wobble, top + 28);
+      ctx.rotate(armWave);
       ctx.strokeStyle = "#9f8f7a";
       ctx.lineWidth = 2.2;
       ctx.beginPath();
-      ctx.moveTo(hazard.x + 12, top + 28);
-      ctx.lineTo(hazard.x + 17, top + 62);
+      ctx.moveTo(0, 0);
+      ctx.lineTo(5, 34);
       ctx.stroke();
       ctx.fillStyle = "#84745f";
       ctx.beginPath();
-      ctx.arc(hazard.x + 17, top + 63, 3, 0, Math.PI * 2);
+      ctx.arc(5, 35, 3, 0, Math.PI * 2);
       ctx.fill();
+      ctx.restore();
 
-      ctx.strokeStyle = "#2d1f3f";
-      ctx.lineWidth = 2.2;
-      ctx.beginPath();
-      ctx.moveTo(hazard.x - 8, top + 36);
-      ctx.quadraticCurveTo(hazard.x, top + 48, hazard.x + 8, top + 36);
-      ctx.stroke();
+      if (panicking) {
+        ctx.save();
+        ctx.translate(hazard.x - 12 + wobble, top + 28);
+        ctx.rotate(-armWave - 0.8);
+        ctx.strokeStyle = "#9f8f7a";
+        ctx.lineWidth = 2.2;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(-4, -18);
+        ctx.stroke();
+        ctx.restore();
+
+        ctx.strokeStyle = "rgba(220, 60, 60, 0.6)";
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(hazard.x - 3 + wobble, top + 19);
+        ctx.lineTo(hazard.x + 3 + wobble, top + 22);
+        ctx.moveTo(hazard.x - 3 + wobble, top + 22);
+        ctx.lineTo(hazard.x + 3 + wobble, top + 19);
+        ctx.stroke();
+      } else {
+        ctx.strokeStyle = "#2d1f3f";
+        ctx.lineWidth = 2.2;
+        ctx.beginPath();
+        ctx.moveTo(hazard.x - 8, top + 36);
+        ctx.quadraticCurveTo(hazard.x, top + 48, hazard.x + 8, top + 36);
+        ctx.stroke();
+      }
     }
 
     if (hazard.damaged) {
@@ -3914,7 +4192,7 @@
     const lines = [];
 
     ctx.save();
-    ctx.font = "700 18px Avenir Next, Trebuchet MS, sans-serif";
+    ctx.font = "700 16px monospace";
     const words = text.split(" ");
     let line = "";
     for (const word of words) {
@@ -3948,23 +4226,20 @@
     const tailX = clamp(tipX, bx + 18, bx + bubbleW - 18);
 
     ctx.globalAlpha = lifePct;
-    ctx.fillStyle = "rgba(255, 252, 242, 0.96)";
-    ctx.strokeStyle = "rgba(90, 74, 40, 0.7)";
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.roundRect(bx, by, bubbleW, bubbleH, 14);
-    ctx.fill();
-    ctx.stroke();
+    ctx.fillStyle = "rgba(22, 30, 38, 0.94)";
+    ctx.strokeStyle = "rgba(80, 95, 110, 0.6)";
+    ctx.lineWidth = 1.5;
+    ctx.fillRect(bx, by, bubbleW, bubbleH);
+    ctx.strokeRect(bx, by, bubbleW, bubbleH);
 
     ctx.beginPath();
-    ctx.moveTo(tailX - 11, by + bubbleH - 1);
+    ctx.moveTo(tailX - 8, by + bubbleH);
     ctx.lineTo(tipX, tipY);
-    ctx.lineTo(tailX + 11, by + bubbleH - 1);
+    ctx.lineTo(tailX + 8, by + bubbleH);
     ctx.closePath();
     ctx.fill();
-    ctx.stroke();
 
-    ctx.fillStyle = "rgba(33, 29, 22, 0.95)";
+    ctx.fillStyle = "#c8e0c8";
     let textY = by + padY + 17;
     for (const l of lines) {
       ctx.fillText(l, bx + padX, textY);
@@ -4012,283 +4287,166 @@
       drawHudMobile();
       return;
     }
-    drawPanel(18, 16, 512, 200, {
-      top: "rgba(22, 38, 44, 0.84)",
-      bottom: "rgba(12, 21, 27, 0.72)",
-    });
 
-    ctx.fillStyle = "#f4faf6";
-    ctx.font = "700 27px Avenir Next, Trebuchet MS, sans-serif";
-    ctx.fillText(`Nick the Tree Man`, 32, 50);
-    ctx.font = "600 16px Avenir Next, Trebuchet MS, sans-serif";
-    ctx.fillStyle = "rgba(218, 234, 239, 0.92)";
-    ctx.fillText(`Level ${state.level}/${MAX_LEVEL}  |  Cut ${state.totalCut}`, 34, 72);
+    const lx = 12;
+    drawPanel(lx, 10, 260, 28, { top: "rgba(40, 55, 45, 0.92)" });
+    ctx.fillStyle = "#c8e0c0";
+    ctx.font = "700 14px monospace";
+    ctx.fillText(`NICK THE TREE MAN`, lx + 8, 29);
 
-    drawMeter(
-      34,
-      96,
-      228,
-      15,
-      state.reputation / 100,
-      "#72d97f",
-      "#4dbf64",
-      "Reputation",
-      `${Math.round(state.reputation)}%`
-    );
-    drawMeter(
-      34,
-      132,
-      228,
-      15,
-      (state.wind + 0.85) / 1.7,
-      "#8ec8ff",
-      "#4f9ff5",
-      "Wind Pressure",
-      `${state.wind >= 0 ? "+" : ""}${state.wind.toFixed(2)}`
-    );
-    drawMeter(
-      34,
-      168,
-      228,
-      15,
-      clamp(state.bestFlow / 8, 0, 1),
-      "#f8d67a",
-      "#f2a93b",
-      "Flow Streak",
-      state.flowStreak > 0 ? `x${state.flowStreak}` : `best x${state.bestFlow}`
-    );
+    drawPanel(lx, 42, 260, 130);
+    ctx.fillStyle = "#e0ecf4";
+    ctx.font = "700 13px monospace";
+    ctx.fillText(`LVL ${state.level}/${MAX_LEVEL}`, lx + 8, 60);
+    ctx.fillText(`CUT ${state.totalCut}`, lx + 120, 60);
+    ctx.fillStyle = "#a0b8c8";
+    ctx.font = "600 12px monospace";
+    const modeLabel = state.controlMode === "axe" ? "AXE" : "SAW";
+    ctx.fillText(`MODE: ${modeLabel}`, lx + 8, 78);
+    const districtName = state.district ? state.district.name : "?";
+    ctx.fillText(districtName.toUpperCase(), lx + 120, 78);
 
-    const districtName = state.district ? state.district.name : "District";
-    const adrenalineText =
-      state.adrenaline.timer > 0
-        ? `Adrenaline ${Math.ceil(state.adrenaline.timer * 10) / 10}s`
-        : "Adrenaline calm";
-    const modeLabel = state.controlMode === "axe" ? "Axe mode" : "Saw mode";
-    const showtimeLabel = state.showtime.active
-      ? "Fiddle+dance: ON"
-      : "Fiddle+dance: OFF";
-    ctx.fillStyle = "#d8eaf0";
-    ctx.font = "600 15px Avenir Next, Trebuchet MS, sans-serif";
-    ctx.fillText(districtName, 286, 111);
-    ctx.fillText(adrenalineText, 286, 136);
+    drawMeter(lx + 8, 96, 240, 10, state.reputation / 100, "#5cb85c", "#5cb85c", "REP", `${Math.round(state.reputation)}%`);
+    drawMeter(lx + 8, 122, 240, 10, (state.wind + 0.85) / 1.7, "#5bc0de", "#5bc0de", "WIND", `${state.wind >= 0 ? "+" : ""}${state.wind.toFixed(2)}`);
+    drawMeter(lx + 8, 148, 240, 10, clamp(state.bestFlow / 10, 0, 1), "#f0ad4e", "#f0ad4e", "FLOW", state.flowStreak > 0 ? `x${state.flowStreak}` : `best x${state.bestFlow}`);
+
+    if (state.contract) {
+      const cx = WORLD.width * 0.5;
+      const cw = 420;
+      drawPanel(cx - cw * 0.5, 10, cw, 28, { top: "rgba(35, 45, 65, 0.92)" });
+      ctx.fillStyle = "#c8d8f0";
+      ctx.font = "700 13px monospace";
+      ctx.textAlign = "center";
+      const gustLabel = state.gust.active
+        ? `GUST ${state.gust.dir > 0 ? ">" : "<"} ${state.gust.strength.toFixed(2)}`
+        : `GUST IN ${Math.max(0, state.gust.cooldown).toFixed(0)}s`;
+      ctx.fillText(`${state.contract.title.toUpperCase()}  |  ${gustLabel}`, cx, 29);
+      ctx.textAlign = "left";
+    }
+
     if (state.bossTreeId) {
       const bossTree = state.trees.find((tree) => tree.id === state.bossTreeId);
       const remaining = bossTree ? bossTree.branches.filter((b) => !b.cut).length : 0;
-      ctx.fillText(
-        `Boss: ${bossTree && !bossTree.fallen ? `active (${remaining} limbs)` : "down"}`,
-        286,
-        161
-      );
-    } else {
-      ctx.fillText("Boss: none", 286, 161);
+      drawPanel(lx, 178, 260, 22, { top: "rgba(80, 50, 20, 0.88)", border: "rgba(255, 180, 80, 0.5)" });
+      ctx.fillStyle = "#ffd090";
+      ctx.font = "700 12px monospace";
+      ctx.fillText(bossTree && !bossTree.fallen ? `BOSS: ${remaining} LIMBS` : "BOSS: DOWN", lx + 8, 194);
     }
-    ctx.fillText(modeLabel, 286, 186);
-    ctx.fillText(showtimeLabel, 286, 211);
 
-    const showtimeButton = getShowtimeButtonRect();
-    drawPanel(showtimeButton.x, showtimeButton.y, showtimeButton.w, showtimeButton.h, {
-      top: state.showtime.active ? "rgba(77, 58, 28, 0.88)" : "rgba(27, 45, 53, 0.84)",
-      bottom: state.showtime.active ? "rgba(56, 39, 20, 0.76)" : "rgba(16, 30, 38, 0.72)",
-      border: state.showtime.active
-        ? "rgba(255, 216, 153, 0.44)"
-        : "rgba(178, 211, 234, 0.3)",
-      radius: 12,
-    });
-    ctx.fillStyle = state.showtime.active ? "#ffe8bf" : "#d8edf8";
-    ctx.font = "700 15px Avenir Next, Trebuchet MS, sans-serif";
-    ctx.fillText(
-      state.showtime.active ? "Stop Fiddle Dance (V)" : "Play Fiddle + Dance (V)",
-      showtimeButton.x + 14,
-      showtimeButton.y + 27
-    );
-
-    if (state.contract) {
-      drawPanel(WORLD.width * 0.5 - 270, 16, 540, 70, {
-        top: "rgba(30, 42, 62, 0.84)",
-        bottom: "rgba(20, 30, 48, 0.7)",
-        border: "rgba(172, 203, 255, 0.28)",
-      });
-      const gustLabel = state.gust.active
-        ? `${state.gust.dir > 0 ? "Gust ->" : "<- Gust"} ${state.gust.strength.toFixed(2)}`
-        : `Next gust ${Math.max(0, state.gust.cooldown).toFixed(1)}s`;
-      ctx.fillStyle = "#edf4ff";
-      ctx.font = "700 22px Avenir Next, Trebuchet MS, sans-serif";
-      ctx.fillText(state.contract.title, WORLD.width * 0.5 - 252, 44);
-      ctx.font = "600 15px Avenir Next, Trebuchet MS, sans-serif";
-      const districtLabel = state.district ? state.district.name : "District";
-      ctx.fillText(
-        `${districtLabel}  |  ${state.contract.blurb}  |  ${gustLabel}`,
-        WORLD.width * 0.5 - 252,
-        67
-      );
-    }
+    const stBtn = getShowtimeButtonRect();
+    ctx.fillStyle = state.showtime.active ? "rgba(80, 60, 20, 0.9)" : "rgba(25, 35, 48, 0.9)";
+    ctx.fillRect(stBtn.x, stBtn.y, stBtn.w, stBtn.h);
+    ctx.strokeStyle = state.showtime.active ? "rgba(200, 170, 80, 0.5)" : "rgba(80, 95, 110, 0.4)";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(stBtn.x, stBtn.y, stBtn.w, stBtn.h);
+    ctx.fillStyle = state.showtime.active ? "#ffd890" : "#90a8b8";
+    ctx.font = "700 12px monospace";
+    ctx.fillText(state.showtime.active ? "[V] FIDDLE: ON" : "[V] FIDDLE: OFF", stBtn.x + 8, stBtn.y + 19);
 
     const selected = getSelectedTree();
     if (selected && state.mode === "playing") {
-      const direction = selected.wedge > 0 ? "Right" : selected.wedge < 0 ? "Left" : "None";
-      const tierLabel = state.activeTier === "high" ? "Upper" : "Lower";
-      const leftTierCount = selected.branches.filter(
-        (branch) => !branch.cut && branch.side < 0 && branch.tier === state.activeTier
-      ).length;
-      const rightTierCount = selected.branches.filter(
-        (branch) => !branch.cut && branch.side > 0 && branch.tier === state.activeTier
-      ).length;
-      const oldLady = getOldLadyCounts();
-      const catStatus = state.treeCat
-        ? state.treeCat.dying
-          ? "injured"
-          : state.treeCat.moving
-            ? "moving"
-            : "perched"
-        : "none";
-      const axe = selected.axe;
-      const axeTargetLabel =
-        axe && axe.targetSide !== 0 ? (axe.targetSide < 0 ? "Left" : "Right") : "Unset";
-      const axeStageLabel = axe ? axe.stage : "idle";
-      const safeLabel =
-        selected.safeDirections && selected.safeDirections.length === 2
-          ? "Both"
-          : selected.safeDirectionHint < 0
-            ? "Left"
-            : selected.safeDirectionHint > 0
-              ? "Right"
-              : "Unknown";
+      const rx = WORLD.width - 290;
+      const rw = 278;
+      drawPanel(rx, 10, rw, 28, { top: "rgba(45, 40, 30, 0.92)" });
+      ctx.fillStyle = "#e8e0c8";
+      ctx.font = "700 13px monospace";
+      const speciesName = selected.species ? selected.species.name : "Tree";
+      ctx.fillText(`${speciesName.toUpperCase()}${selected.isBoss ? " [BOSS]" : ""}`, rx + 8, 29);
 
-      drawPanel(WORLD.width - 398, 16, 380, 344, {
-        top: "rgba(28, 37, 33, 0.82)",
-        bottom: "rgba(16, 26, 22, 0.72)",
-      });
-
-      ctx.fillStyle = "#f8f5dd";
-      ctx.font = "700 20px Avenir Next, Trebuchet MS, sans-serif";
-      ctx.fillText(`Selected: ${selected.id}`, WORLD.width - 380, 46);
-      ctx.font = "600 16px Avenir Next, Trebuchet MS, sans-serif";
-      const speciesLabel = `${selected.species ? selected.species.name : "Mixed"}${selected.isBoss ? " (Boss)" : ""}`;
-      ctx.fillText(`Species: ${speciesLabel}`, WORLD.width - 380, 72);
-      ctx.fillText(
-        `Imbalance: ${selected.imbalance >= 0 ? "+" : ""}${selected.imbalance.toFixed(2)}`,
-        WORLD.width - 380,
-        96
-      );
-      ctx.fillText(
-        `Mode: ${state.controlMode === "axe" ? "Axe" : "Saw"}  |  Wedge: ${direction}`,
-        WORLD.width - 380,
-        120
-      );
-      if (state.controlMode === "axe") {
-        ctx.fillText(
-          `Axe Target: ${axeTargetLabel}  Stage: ${axeStageLabel}`,
-          WORLD.width - 380,
-          144
-        );
-        ctx.fillText(
-          `Notch ${axe ? axe.notchHits : 0}/${axe ? axe.notchNeed : 0}  Back ${axe ? axe.backHits : 0}/${axe ? axe.backNeed : 0}`,
-          WORLD.width - 380,
-          168
-        );
-      } else {
-        ctx.fillText(`Tier: ${tierLabel}  |  Cut L ${leftTierCount}  R ${rightTierCount}`, WORLD.width - 380, 144);
-        ctx.fillText(`Damaged Limbs: ${selected.branches.filter((branch) => !branch.cut && getBranchDamageRatio(branch) > 0.01).length}`, WORLD.width - 380, 168);
-      }
-      ctx.fillText(`Safe Fall Direction: ${safeLabel}`, WORLD.width - 380, 192);
+      drawPanel(rx, 42, rw, 170);
+      ctx.fillStyle = "#d0dce8";
+      ctx.font = "600 12px monospace";
+      let ry = 60;
+      const safeLabel = selected.safeDirections && selected.safeDirections.length === 2
+        ? "BOTH" : selected.safeDirectionHint < 0 ? "<LEFT" : selected.safeDirectionHint > 0 ? "RIGHT>" : "???";
+      ctx.fillText(`SAFE: ${safeLabel}`, rx + 8, ry); ry += 17;
+      const direction = selected.wedge > 0 ? "RIGHT" : selected.wedge < 0 ? "LEFT" : "NONE";
+      ctx.fillText(`WEDGE: ${direction}`, rx + 8, ry); ry += 17;
+      const tierLabel = state.activeTier === "high" ? "HIGH" : state.activeTier === "mid" ? "MID" : "LOW";
+      ctx.fillText(`TIER: ${tierLabel}`, rx + 8, ry);
+      const leftCount = selected.branches.filter(b => !b.cut && b.side < 0).length;
+      const rightCount = selected.branches.filter(b => !b.cut && b.side > 0).length;
+      ctx.fillText(`L:${leftCount} R:${rightCount}`, rx + 140, ry); ry += 17;
       const proj = getProjectedFall(selected);
-      const projSide = proj.direction < 0 ? "Left" : "Right";
-      ctx.fillText(`Projected Drift: ${projSide} ${Math.round(proj.certainty * 100)}%`, WORLD.width - 380, 216);
-      const damagedBranchCount = selected.branches.filter(
-        (branch) => !branch.cut && getBranchDamageRatio(branch) > 0.01
-      ).length;
-      if (state.controlMode === "axe") {
-        ctx.fillText(`Damaged Limbs: ${damagedBranchCount}`, WORLD.width - 380, 240);
-      }
-      ctx.fillText(
-        `Old Ladies Safe: ${oldLady.saved}/${oldLady.total}`,
-        WORLD.width - 380,
-        264
-      );
-      ctx.fillText(`Tree Cat: ${catStatus}`, WORLD.width - 380, 288);
+      ctx.fillText(`DRIFT: ${proj.direction < 0 ? "<" : ">"} ${Math.round(proj.certainty * 100)}%`, rx + 8, ry);
+      const imb = selected.imbalance;
+      ctx.fillText(`IMB: ${imb >= 0 ? "+" : ""}${imb.toFixed(2)}`, rx + 140, ry); ry += 17;
+      const oldLady = getOldLadyCounts();
+      ctx.fillText(`LADIES: ${oldLady.saved}/${oldLady.total}`, rx + 8, ry);
+      const catStatus = state.treeCat ? (state.treeCat.dying ? "HURT" : state.treeCat.moving ? "MOVE" : "OK") : "--";
+      ctx.fillText(`CAT: ${catStatus}`, rx + 140, ry); ry += 8;
 
-      drawMeter(
-        WORLD.width - 380,
-        312,
-        344,
-        14,
-        clamp(Math.abs(selected.imbalance) / Math.max(0.22, autoFallThreshold(selected)), 0, 1),
-        "#ffd87b",
-        "#f2994f",
-        "Tip Risk",
-        `${Math.round(clamp(Math.abs(selected.imbalance) / Math.max(0.22, autoFallThreshold(selected)), 0, 1) * 100)}%`
-      );
+      const tipRisk = clamp(Math.abs(selected.imbalance) / Math.max(0.22, autoFallThreshold(selected)), 0, 1);
+      const tipColor = tipRisk > 0.7 ? "#d9534f" : tipRisk > 0.4 ? "#f0ad4e" : "#5cb85c";
+      drawMeter(rx + 8, ry + 6, rw - 16, 10, tipRisk, tipColor, tipColor, "TIP RISK", `${Math.round(tipRisk * 100)}%`);
+
+      if (state.controlMode === "axe") {
+        const axe = selected.axe;
+        ry += 28;
+        const axeTargetLabel = axe && axe.targetSide !== 0 ? (axe.targetSide < 0 ? "<LEFT" : "RIGHT>") : "UNSET";
+        ctx.fillStyle = "#d0dce8";
+        ctx.font = "600 12px monospace";
+        ctx.fillText(`AXE: ${axeTargetLabel} [${axe ? axe.stage : "idle"}]`, rx + 8, ry);
+        ry += 15;
+        const notchPct = axe ? clamp(axe.notchHits / Math.max(1, axe.notchNeed), 0, 1) : 0;
+        const backPct = axe ? clamp(axe.backHits / Math.max(1, axe.backNeed), 0, 1) : 0;
+        drawMeter(rx + 8, ry, (rw - 20) * 0.5, 8, notchPct, "#f0ad4e", "#f0ad4e", "NOTCH", "");
+        drawMeter(rx + 8 + (rw - 20) * 0.5 + 4, ry, (rw - 20) * 0.5, 8, backPct, "#d9534f", "#d9534f", "BACK", "");
+      }
     }
   }
 
   function drawHudMobile() {
     const selected = getSelectedTree();
     const modeLabel = state.controlMode === "axe" ? "AXE" : "SAW";
-    const tierLabel = state.activeTier === "high" ? "HI" : "LO";
+    const tierLabel = state.activeTier === "high" ? "HI" : state.activeTier === "mid" ? "MD" : "LO";
     const gustLabel = state.gust.active
-      ? `${state.gust.dir > 0 ? "GUST\u25B6" : "\u25C0GUST"}`
-      : `Gust ${Math.max(0, state.gust.cooldown).toFixed(0)}s`;
+      ? `GUST ${state.gust.dir > 0 ? ">" : "<"}`
+      : `GST ${Math.max(0, state.gust.cooldown).toFixed(0)}s`;
 
-    drawPanel(10, 8, 420, 52, {
-      top: "rgba(22, 38, 44, 0.88)",
-      bottom: "rgba(12, 21, 27, 0.78)",
-      radius: 10,
-    });
+    drawPanel(8, 4, 450, 60);
+    ctx.fillStyle = "#e0ecf4";
+    ctx.font = "700 18px monospace";
+    ctx.fillText(`L${state.level}`, 16, 24);
+    ctx.fillText(`${modeLabel}`, 52, 24);
+    ctx.fillText(`${tierLabel}`, 100, 24);
+    ctx.fillText(`CUT ${state.totalCut}`, 140, 24);
+    ctx.fillStyle = "#a0b8c8";
+    ctx.font = "600 15px monospace";
+    ctx.fillText(`${gustLabel}`, 250, 24);
 
-    ctx.fillStyle = "#f4faf6";
-    ctx.font = "700 20px Avenir Next, Trebuchet MS, sans-serif";
-    ctx.fillText(`L${state.level}`, 20, 32);
-
-    drawMeter(52, 16, 120, 12, state.reputation / 100, "#72d97f", "#4dbf64", "Rep", `${Math.round(state.reputation)}%`);
-    drawMeter(52, 40, 120, 12, (state.wind + 0.85) / 1.7, "#8ec8ff", "#4f9ff5", "Wind", `${state.wind >= 0 ? "+" : ""}${state.wind.toFixed(1)}`);
-
-    ctx.fillStyle = "#d8eaf0";
-    ctx.font = "600 14px Avenir Next, Trebuchet MS, sans-serif";
-    ctx.fillText(`${modeLabel} | ${tierLabel} | Cut ${state.totalCut}`, 190, 26);
-    ctx.fillText(`${gustLabel} | Flow x${state.flowStreak}`, 190, 48);
+    drawMeter(16, 34, 200, 10, state.reputation / 100, "#5cb85c", "#5cb85c", "", `REP ${Math.round(state.reputation)}%`);
+    drawMeter(230, 34, 200, 10, (state.wind + 0.85) / 1.7, "#5bc0de", "#5bc0de", "", `WIND ${state.wind >= 0 ? "+" : ""}${state.wind.toFixed(1)}`);
 
     if (selected && state.mode === "playing") {
-      const safeLabel =
-        selected.safeDirections && selected.safeDirections.length === 2
-          ? "Both"
-          : selected.safeDirectionHint < 0
-            ? "\u25C0Safe"
-            : selected.safeDirectionHint > 0
-              ? "Safe\u25B6"
-              : "?";
-      const proj = getProjectedFall(selected);
-      const projPct = Math.round(proj.certainty * 100);
+      const safeLabel = selected.safeDirections && selected.safeDirections.length === 2
+        ? "BOTH" : selected.safeDirectionHint < 0 ? "<SAFE" : selected.safeDirectionHint > 0 ? "SAFE>" : "???";
       const tipRisk = clamp(Math.abs(selected.imbalance) / Math.max(0.22, autoFallThreshold(selected)), 0, 1);
+      const proj = getProjectedFall(selected);
 
-      drawPanel(WORLD.width - 310, 8, 300, 52, {
-        top: "rgba(28, 37, 33, 0.86)",
-        bottom: "rgba(16, 26, 22, 0.76)",
-        radius: 10,
-      });
-
-      ctx.fillStyle = "#f8f5dd";
-      ctx.font = "700 14px Avenir Next, Trebuchet MS, sans-serif";
+      drawPanel(WORLD.width - 400, 4, 392, 60);
+      ctx.fillStyle = "#e8e0c8";
+      ctx.font = "700 16px monospace";
       const speciesName = selected.species ? selected.species.name : "Tree";
-      ctx.fillText(`${speciesName}${selected.isBoss ? " BOSS" : ""} | ${safeLabel}`, WORLD.width - 296, 26);
-      ctx.font = "600 13px Avenir Next, Trebuchet MS, sans-serif";
-      ctx.fillStyle = "#d8eaf0";
-      const wedgeLabel = selected.wedge > 0 ? "Wdg\u25B6" : selected.wedge < 0 ? "\u25C0Wdg" : "NoWdg";
-      ctx.fillText(`Drift ${projPct}% | Tip ${Math.round(tipRisk * 100)}% | ${wedgeLabel}`, WORLD.width - 296, 48);
+      ctx.fillText(`${speciesName.toUpperCase()}${selected.isBoss ? " [BOSS]" : ""}`, WORLD.width - 392, 22);
+      ctx.fillStyle = "#a0b8c8";
+      ctx.font = "600 14px monospace";
+      const wedge = selected.wedge > 0 ? "W>" : selected.wedge < 0 ? "<W" : "--";
+      ctx.fillText(`${safeLabel} | ${wedge} | DRIFT ${proj.direction < 0 ? "<" : ">"} ${Math.round(proj.certainty * 100)}%`, WORLD.width - 392, 42);
 
-      drawMeter(WORLD.width - 296, 53, 120, 4, tipRisk, "#ffd87b", "#f2994f", "", "");
+      const tipColor = tipRisk > 0.7 ? "#d9534f" : tipRisk > 0.4 ? "#f0ad4e" : "#5cb85c";
+      drawMeter(WORLD.width - 392, 50, 190, 8, tipRisk, tipColor, tipColor, "", `TIP ${Math.round(tipRisk * 100)}%`);
     }
 
     if (state.contract) {
-      const contractW = 280;
-      drawPanel(WORLD.width * 0.5 - contractW * 0.5, 8, contractW, 32, {
-        top: "rgba(30, 42, 62, 0.84)",
-        bottom: "rgba(20, 30, 48, 0.7)",
-        border: "rgba(172, 203, 255, 0.28)",
-        radius: 8,
-      });
-      ctx.fillStyle = "#edf4ff";
-      ctx.font = "700 15px Avenir Next, Trebuchet MS, sans-serif";
-      ctx.fillText(state.contract.title, WORLD.width * 0.5 - contractW * 0.5 + 12, 30);
+      const cx = WORLD.width * 0.5;
+      const cw = 300;
+      drawPanel(cx - cw * 0.5, 4, cw, 22, { top: "rgba(35, 45, 65, 0.9)" });
+      ctx.fillStyle = "#c8d8f0";
+      ctx.font = "700 12px monospace";
+      ctx.textAlign = "center";
+      ctx.fillText(state.contract.title.toUpperCase(), cx, 20);
+      ctx.textAlign = "left";
     }
   }
 
@@ -4302,81 +4460,90 @@
       const alpha = clamp(callout.life / Math.max(0.2, callout.maxLife), 0, 1);
       const rise = (1 - alpha) * callout.drift;
       const textY = y - rise;
-      drawPanel(30, textY - 26, 470, 34, {
-        top: `rgba(31, 45, 52, ${0.86 * alpha})`,
-        bottom: `rgba(16, 24, 31, ${0.78 * alpha})`,
-        border: `rgba(167, 201, 223, ${0.34 * alpha})`,
-        radius: 10,
-      });
+      ctx.fillStyle = `rgba(20, 28, 34, ${0.88 * alpha})`;
+      ctx.fillRect(24, textY - 24, 480, 30);
+      ctx.strokeStyle = `rgba(80, 95, 110, ${0.5 * alpha})`;
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(24, textY - 24, 480, 30);
       ctx.fillStyle = callout.color;
-      ctx.font = "700 18px Avenir Next, Trebuchet MS, sans-serif";
-      ctx.fillText(callout.text, 44, textY - 2);
-      y -= 42;
+      ctx.globalAlpha = alpha;
+      ctx.font = "700 16px monospace";
+      ctx.fillText(callout.text, 34, textY + 1);
+      ctx.globalAlpha = 1;
+      y -= 38;
     }
   }
 
   function drawOverlayPanel(title, lines) {
-    ctx.fillStyle = "rgba(9, 18, 12, 0.72)";
+    ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
     ctx.fillRect(0, 0, WORLD.width, WORLD.height);
 
-    const panelW = 780;
-    const panelH = clamp(190 + lines.length * 38, 320, WORLD.height - 70);
+    const panelW = 680;
+    const panelH = clamp(140 + lines.length * 32, 280, WORLD.height - 60);
     const x = (WORLD.width - panelW) * 0.5;
     const y = (WORLD.height - panelH) * 0.5;
 
-    drawPanel(x, y, panelW, panelH, {
-      top: "rgba(240, 248, 235, 0.97)",
-      bottom: "rgba(219, 235, 215, 0.95)",
-      border: "rgba(75, 108, 68, 0.45)",
-      radius: 18,
-    });
+    ctx.fillStyle = "rgba(22, 30, 38, 0.96)";
+    ctx.fillRect(x, y, panelW, panelH);
+    ctx.strokeStyle = "rgba(80, 110, 90, 0.7)";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x, y, panelW, panelH);
 
-    ctx.fillStyle = "rgba(28, 55, 31, 0.96)";
-    ctx.font = "800 56px Avenir Next, Trebuchet MS, sans-serif";
-    ctx.fillText(title, x + 44, y + 84);
+    ctx.fillStyle = "rgba(40, 60, 45, 0.95)";
+    ctx.fillRect(x, y, panelW, 52);
+    ctx.strokeStyle = "rgba(80, 110, 90, 0.5)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x, y + 52);
+    ctx.lineTo(x + panelW, y + 52);
+    ctx.stroke();
 
-    ctx.fillStyle = "rgba(26, 50, 29, 0.9)";
-    ctx.font = "600 24px Avenir Next, Trebuchet MS, sans-serif";
-    let lineY = y + 136;
+    ctx.fillStyle = "#c8e8c0";
+    ctx.font = "700 32px monospace";
+    ctx.fillText(title.toUpperCase(), x + 20, y + 38);
+
+    ctx.fillStyle = "#a0c0b0";
+    ctx.font = "600 16px monospace";
+    let lineY = y + 84;
     for (const line of lines) {
-      ctx.fillText(line, x + 44, lineY);
-      lineY += 37;
+      ctx.fillText(line, x + 20, lineY);
+      lineY += 30;
     }
   }
 
   function drawMenuTutorialCard(x, y, w, h, title, lines, accent) {
-    drawPanel(x, y, w, h, {
-      top: "rgba(245, 250, 244, 0.95)",
-      bottom: "rgba(225, 238, 221, 0.94)",
-      border: "rgba(83, 112, 76, 0.38)",
-      radius: 14,
-    });
+    ctx.fillStyle = "rgba(28, 36, 42, 0.95)";
+    ctx.fillRect(x, y, w, h);
     ctx.fillStyle = accent;
-    ctx.font = "800 24px Avenir Next, Trebuchet MS, sans-serif";
-    ctx.fillText(title, x + 18, y + 34);
-    ctx.fillStyle = "rgba(28, 47, 30, 0.9)";
-    ctx.font = "600 17px Avenir Next, Trebuchet MS, sans-serif";
-    let yy = y + 62;
+    ctx.fillRect(x, y, w, 28);
+    ctx.strokeStyle = "rgba(80, 100, 90, 0.5)";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x, y, w, h);
+    ctx.fillStyle = "#e0f0e0";
+    ctx.font = "700 14px monospace";
+    ctx.fillText(title, x + 8, y + 20);
+    ctx.fillStyle = "#90a8a0";
+    ctx.font = "600 13px monospace";
+    let yy = y + 48;
     for (const line of lines) {
-      ctx.fillText(line, x + 18, yy);
-      yy += 29;
+      ctx.fillText(line, x + 8, yy);
+      yy += 22;
     }
   }
 
   function drawMenuKeyHint(x, y, key, detail, accent = false) {
-    const w = accent ? 170 : 152;
-    drawPanel(x, y, w, 54, {
-      top: accent ? "rgba(67, 84, 124, 0.92)" : "rgba(25, 38, 52, 0.88)",
-      bottom: accent ? "rgba(51, 67, 102, 0.88)" : "rgba(16, 25, 35, 0.82)",
-      border: accent ? "rgba(205, 225, 255, 0.4)" : "rgba(167, 189, 220, 0.28)",
-      radius: 10,
-    });
-    ctx.fillStyle = "#f2f6ff";
-    ctx.font = "800 16px Avenir Next, Trebuchet MS, sans-serif";
-    ctx.fillText(key, x + 12, y + 22);
-    ctx.font = "600 14px Avenir Next, Trebuchet MS, sans-serif";
-    ctx.fillStyle = "rgba(215, 229, 247, 0.92)";
-    ctx.fillText(detail, x + 12, y + 42);
+    const w = 118;
+    ctx.fillStyle = accent ? "rgba(50, 65, 100, 0.92)" : "rgba(25, 35, 48, 0.9)";
+    ctx.fillRect(x, y, w, 48);
+    ctx.strokeStyle = accent ? "rgba(140, 170, 220, 0.5)" : "rgba(80, 95, 110, 0.4)";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x, y, w, 48);
+    ctx.fillStyle = "#d0e0f0";
+    ctx.font = "700 14px monospace";
+    ctx.fillText(key, x + 6, y + 18);
+    ctx.fillStyle = "#80a0b8";
+    ctx.font = "600 12px monospace";
+    ctx.fillText(detail, x + 6, y + 38);
   }
 
   function drawMenuTutorialOverlay() {
@@ -4391,222 +4558,129 @@
       return;
     }
 
-    const panelW = 1120;
-    const panelH = 630;
+    const panelW = 1040;
+    const panelH = 580;
     const x = (WORLD.width - panelW) * 0.5;
     const y = (WORLD.height - panelH) * 0.5;
 
-    drawPanel(x, y, panelW, panelH, {
-      top: "rgba(231, 244, 232, 0.98)",
-      bottom: "rgba(208, 227, 207, 0.95)",
-      border: "rgba(74, 102, 68, 0.48)",
-      radius: 22,
-    });
+    ctx.fillStyle = "rgba(18, 24, 30, 0.97)";
+    ctx.fillRect(x, y, panelW, panelH);
+    ctx.strokeStyle = "rgba(80, 110, 90, 0.7)";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x, y, panelW, panelH);
 
-    ctx.fillStyle = "rgba(24, 50, 30, 0.98)";
-    ctx.font = "900 60px Avenir Next, Trebuchet MS, sans-serif";
-    ctx.fillText("NICK THE TREE MAN", x + 42, y + 78);
-    ctx.fillStyle = "rgba(46, 76, 52, 0.95)";
-    ctx.font = "700 27px Avenir Next, Trebuchet MS, sans-serif";
-    ctx.fillText("Town Tree Crew Bootcamp", x + 44, y + 112);
-    ctx.fillStyle = "rgba(42, 67, 43, 0.9)";
-    ctx.font = "600 20px Avenir Next, Trebuchet MS, sans-serif";
-    ctx.fillText(
-      "Tutorial mission: keep every trunk off homes, cars, and old ladies.",
-      x + 44,
-      y + 142
-    );
+    ctx.fillStyle = "rgba(40, 60, 45, 0.95)";
+    ctx.fillRect(x, y, panelW, 56);
+    ctx.strokeStyle = "rgba(80, 110, 90, 0.5)";
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(x, y + 56); ctx.lineTo(x + panelW, y + 56); ctx.stroke();
 
-    ctx.strokeStyle = `rgba(255, 230, 162, ${0.34 + pulse})`;
-    ctx.lineWidth = 5;
-    ctx.beginPath();
-    ctx.moveTo(x + 44, y + 160);
-    ctx.lineTo(x + panelW - 44, y + 160);
-    ctx.stroke();
+    ctx.fillStyle = "#c8e8c0";
+    ctx.font = "700 36px monospace";
+    ctx.fillText("NICK THE TREE MAN", x + 20, y + 42);
+    ctx.fillStyle = "#80a078";
+    ctx.font = "600 16px monospace";
+    ctx.fillText("TOWN TREE CREW BOOTCAMP", x + 550, y + 42);
 
-    const cardY = y + 184;
-    const cardGap = 18;
-    const cardW = (panelW - 88 - cardGap * 2) / 3;
-    drawMenuTutorialCard(
-      x + 28,
-      cardY,
-      cardW,
-      194,
-      "Step 1: Read The Lean",
-      [
-        "Pick trees with cursor or Tab.",
-        "Watch Safe Fall + Drift lines.",
-        "1/2 choose lower or upper tier.",
-        "Cats move branch-to-branch.",
-      ],
-      "#3d6d47"
-    );
-    drawMenuTutorialCard(
-      x + 28 + cardW + cardGap,
-      cardY,
-      cardW,
-      194,
-      "Step 2: Cut With Intent",
-      [
-        "Saw: A left, B/D right, or swipe.",
-        "Thick limbs take repeated hits.",
-        "X toggles Saw/Axe mode.",
-        "Axe appears in hand in Axe mode.",
-      ],
-      "#49609b"
-    );
-    drawMenuTutorialCard(
-      x + 28 + (cardW + cardGap) * 2,
-      cardY,
-      cardW,
-      194,
-      "Step 3: Drop It Safe",
-      [
-        "Axe mode: notch one side first.",
-        "Then back-cut opposite side.",
-        "Q/E bias wedge, W clears wedge.",
-        "Space jumps Nick out of danger.",
-      ],
-      "#8a5733"
-    );
+    const cardY = y + 72;
+    const cardGap = 12;
+    const cardW = (panelW - 40 - cardGap * 2) / 3;
+    drawMenuTutorialCard(x + 14, cardY, cardW, 180, "1: READ THE LEAN",
+      ["Tab/click to select trees.", "Watch safe fall + drift lines.", "1/2/3 choose branch tier.", "Cats move between branches."], "#3d6d47");
+    drawMenuTutorialCard(x + 14 + cardW + cardGap, cardY, cardW, 180, "2: CUT WITH INTENT",
+      ["Saw: A left, B/D right, or swipe.", "Thick limbs take repeated hits.", "X toggles Saw/Axe mode.", "HP bars show on damaged limbs."], "#49609b");
+    drawMenuTutorialCard(x + 14 + (cardW + cardGap) * 2, cardY, cardW, 180, "3: DROP IT SAFE",
+      ["Axe: notch one side first.", "Then back-cut the opposite side.", "Q/E wedge bias, W clears.", "Space jumps Nick out of danger."], "#8a5733");
 
-    const hintY = y + 398;
+    const hintY = y + 268;
     const hints = [
-      ["A / B / D", "Saw cuts by side", false],
-      ["1 / 2", "Select branch tier", false],
-      ["X", "Switch saw/axe", true],
-      ["Q / E / W", "Set or clear wedge", false],
-      ["TAB", "Cycle target tree", false],
+      ["A/B/D", "Saw cuts", false],
+      ["1/2/3", "Tier select", false],
+      ["X", "Saw/Axe", true],
+      ["Q/E/W", "Wedge", false],
+      ["TAB", "Next tree", false],
       ["SPACE", "Jump", false],
+      ["V", "Dance", false],
+      ["F", "Fullscr", false],
     ];
-    let hx = x + 28;
+    let hx = x + 14;
     for (const hint of hints) {
       drawMenuKeyHint(hx, hintY, hint[0], hint[1], hint[2]);
-      hx += (hint[2] ? 170 : 152) + 12;
+      hx += 128;
     }
 
-    drawPanel(x + 28, y + 468, panelW - 56, 134, {
-      top: "rgba(30, 45, 60, 0.88)",
-      bottom: "rgba(17, 27, 38, 0.83)",
-      border: "rgba(182, 212, 244, 0.35)",
-      radius: 14,
-    });
-    ctx.fillStyle = "#eaf4ff";
-    ctx.font = "700 29px Avenir Next, Trebuchet MS, sans-serif";
-    ctx.fillText("Training Contract: Main Street Shift", x + 52, y + 509);
-    ctx.font = "600 19px Avenir Next, Trebuchet MS, sans-serif";
-    ctx.fillStyle = "rgba(208, 225, 244, 0.95)";
-    ctx.fillText(
-      "Goal: balance each tree and force clean falls without collateral damage.",
-      x + 52,
-      y + 538
-    );
-    ctx.fillStyle = "#ffdca8";
-    ctx.font = "800 34px Avenir Next, Trebuchet MS, sans-serif";
-    ctx.fillText("PRESS ENTER OR CLICK TO START SHIFT", x + 52, y + 580);
-    ctx.font = "600 17px Avenir Next, Trebuchet MS, sans-serif";
-    ctx.fillStyle = "rgba(201, 219, 235, 0.94)";
-    ctx.fillText("F toggles fullscreen • V starts fiddle dance mode", x + 52, y + 602);
+    ctx.fillStyle = "rgba(25, 38, 50, 0.95)";
+    ctx.fillRect(x + 14, y + 340, panelW - 28, 100);
+    ctx.strokeStyle = "rgba(80, 120, 160, 0.4)";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x + 14, y + 340, panelW - 28, 100);
+    ctx.fillStyle = "#b0d0e8";
+    ctx.font = "700 22px monospace";
+    ctx.fillText("TRAINING CONTRACT: MAIN STREET SHIFT", x + 30, y + 370);
+    ctx.fillStyle = "#80a0b8";
+    ctx.font = "600 15px monospace";
+    ctx.fillText("Balance each tree and force clean falls. No collateral damage.", x + 30, y + 396);
+    ctx.fillText("Cut branches strategically to shift weight. More branches = harder puzzle.", x + 30, y + 418);
+
+    const tapAlpha = 0.6 + Math.sin(now * 4) * 0.4;
+    ctx.fillStyle = `rgba(255, 220, 140, ${tapAlpha})`;
+    ctx.font = "700 28px monospace";
+    ctx.fillText("[ PRESS ENTER OR CLICK TO START ]", x + 30, y + panelH - 70);
+    ctx.fillStyle = "#607868";
+    ctx.font = "600 13px monospace";
+    ctx.fillText("F = FULLSCREEN | V = FIDDLE DANCE | R = RESTART", x + 30, y + panelH - 40);
   }
 
   function drawMenuMobile(now, pulse) {
-    const panelW = WORLD.width - 40;
-    const panelH = WORLD.height - 40;
-    const x = 20;
-    const y = 20;
+    const panelW = WORLD.width - 20;
+    const panelH = WORLD.height - 20;
+    const x = 10;
+    const y = 10;
 
-    drawPanel(x, y, panelW, panelH, {
-      top: "rgba(231, 244, 232, 0.98)",
-      bottom: "rgba(208, 227, 207, 0.95)",
-      border: "rgba(74, 102, 68, 0.48)",
-      radius: 18,
-    });
+    ctx.fillStyle = "rgba(18, 24, 30, 0.97)";
+    ctx.fillRect(x, y, panelW, panelH);
+    ctx.strokeStyle = "rgba(80, 110, 90, 0.7)";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x, y, panelW, panelH);
 
-    ctx.fillStyle = "rgba(24, 50, 30, 0.98)";
-    ctx.font = "900 42px Avenir Next, Trebuchet MS, sans-serif";
-    ctx.fillText("NICK THE TREE MAN", x + 30, y + 58);
-    ctx.fillStyle = "rgba(46, 76, 52, 0.95)";
-    ctx.font = "700 20px Avenir Next, Trebuchet MS, sans-serif";
-    ctx.fillText("Town Tree Crew Bootcamp", x + 32, y + 86);
+    ctx.fillStyle = "rgba(40, 60, 45, 0.95)";
+    ctx.fillRect(x, y, panelW, 44);
 
-    ctx.strokeStyle = `rgba(255, 230, 162, ${0.34 + pulse})`;
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.moveTo(x + 30, y + 100);
-    ctx.lineTo(x + panelW - 30, y + 100);
-    ctx.stroke();
+    ctx.fillStyle = "#c8e8c0";
+    ctx.font = "700 28px monospace";
+    ctx.fillText("NICK THE TREE MAN", x + 14, y + 34);
 
-    const cardW = (panelW - 80) / 3;
-    const cardY = y + 114;
-    drawMenuTutorialCard(
-      x + 20,
-      cardY,
-      cardW,
-      160,
-      "1: Read The Lean",
-      [
-        "Tap trees to select them.",
-        "Watch fall direction lines.",
-        "Use LOW/HIGH tier buttons.",
-      ],
-      "#3d6d47"
-    );
-    drawMenuTutorialCard(
-      x + 30 + cardW,
-      cardY,
-      cardW,
-      160,
-      "2: Cut With Intent",
-      [
-        "Swipe across branches to cut.",
-        "Use L/R buttons for key cuts.",
-        "Toggle SAW/AXE mode below.",
-      ],
-      "#49609b"
-    );
-    drawMenuTutorialCard(
-      x + 40 + cardW * 2,
-      cardY,
-      cardW,
-      160,
-      "3: Drop It Safe",
-      [
-        "Set wedge direction with buttons.",
-        "Axe: notch, then back-cut.",
-        "JUMP dodges falling trunks.",
-      ],
-      "#8a5733"
-    );
+    const cardW = (panelW - 50) / 3;
+    const cardY = y + 54;
+    drawMenuTutorialCard(x + 10, cardY, cardW, 140, "1: LEAN",
+      ["Tap trees to select.", "Watch fall lines.", "LO/MID/HI tier btns."], "#3d6d47");
+    drawMenuTutorialCard(x + 15 + cardW, cardY, cardW, 140, "2: CUT",
+      ["Swipe to cut branches.", "L/R buttons for cuts.", "Toggle SAW/AXE."], "#49609b");
+    drawMenuTutorialCard(x + 20 + cardW * 2, cardY, cardW, 140, "3: DROP",
+      ["Set wedge direction.", "Axe: notch, back-cut.", "JUMP to dodge."], "#8a5733");
 
-    drawPanel(x + 20, y + 290, panelW - 40, 66, {
-      top: "rgba(30, 45, 60, 0.88)",
-      bottom: "rgba(17, 27, 38, 0.83)",
-      border: "rgba(182, 212, 244, 0.35)",
-      radius: 12,
-    });
-    ctx.fillStyle = "#eaf4ff";
-    ctx.font = "700 22px Avenir Next, Trebuchet MS, sans-serif";
-    ctx.fillText("Training Contract: Main Street Shift", x + 40, y + 320);
-    ctx.font = "600 16px Avenir Next, Trebuchet MS, sans-serif";
-    ctx.fillStyle = "rgba(208, 225, 244, 0.95)";
-    ctx.fillText(
-      "Balance trees and force clean falls without collateral damage.",
-      x + 40,
-      y + 345
-    );
+    ctx.fillStyle = "rgba(25, 38, 50, 0.95)";
+    ctx.fillRect(x + 10, y + 206, panelW - 20, 50);
+    ctx.strokeStyle = "rgba(80, 120, 160, 0.4)";
+    ctx.strokeRect(x + 10, y + 206, panelW - 20, 50);
+    ctx.fillStyle = "#b0d0e8";
+    ctx.font = "700 18px monospace";
+    ctx.fillText("CONTRACT: MAIN STREET SHIFT", x + 22, y + 230);
+    ctx.fillStyle = "#80a0b8";
+    ctx.font = "600 13px monospace";
+    ctx.fillText("Cut branches to shift weight. Drop trees safely.", x + 22, y + 248);
 
-    const tapAlpha = 0.7 + Math.sin(now * 4) * 0.3;
-    ctx.fillStyle = `rgba(255, 220, 168, ${tapAlpha})`;
-    ctx.font = "800 38px Avenir Next, Trebuchet MS, sans-serif";
-    const tapText = "TAP ANYWHERE TO START";
-    const tapW = ctx.measureText(tapText).width;
-    ctx.fillText(tapText, (WORLD.width - tapW) * 0.5, y + panelH - 42);
-
-    ctx.font = "600 15px Avenir Next, Trebuchet MS, sans-serif";
-    ctx.fillStyle = "rgba(90, 120, 80, 0.85)";
-    const tipText = "Turn your phone sideways for the best experience";
-    const tipW = ctx.measureText(tipText).width;
-    ctx.fillText(tipText, (WORLD.width - tipW) * 0.5, y + panelH - 16);
+    const tapAlpha = 0.6 + Math.sin(now * 4) * 0.4;
+    ctx.fillStyle = `rgba(255, 220, 140, ${tapAlpha})`;
+    ctx.font = "700 32px monospace";
+    ctx.textAlign = "center";
+    ctx.fillText("[ TAP TO START ]", WORLD.width * 0.5, y + panelH - 50);
+    ctx.textAlign = "left";
+    ctx.fillStyle = "#607868";
+    ctx.font = "600 14px monospace";
+    ctx.textAlign = "center";
+    ctx.fillText("ROTATE PHONE FOR BEST EXPERIENCE", WORLD.width * 0.5, y + panelH - 18);
+    ctx.textAlign = "left";
   }
 
   function drawTouchControls() {
@@ -4619,46 +4693,30 @@
       }
     }
 
-    ctx.fillStyle = "rgba(0, 0, 0, 0.35)";
-    ctx.beginPath();
-    ctx.roundRect(6, TOUCH_BAR_TOP, WORLD.width - 12, 84, 14);
-    ctx.fill();
+    ctx.fillStyle = "rgba(12, 18, 24, 0.55)";
+    ctx.fillRect(4, TOUCH_BAR_TOP, WORLD.width - 8, WORLD.height - TOUCH_BAR_TOP - 2);
 
     for (const btn of buttons) {
       const flash = touchBtnFlash[btn.id] || 0;
       const isActive = btn.active;
-      const brightness = flash > 0 ? 0.4 + flash * 2.5 : 0;
+      const brightness = flash > 0 ? 0.3 + flash * 2 : 0;
 
-      const topColor = isActive
-        ? `rgba(${62 + brightness * 80}, ${92 + brightness * 60}, ${52 + brightness * 60}, 0.92)`
-        : `rgba(${28 + brightness * 100}, ${42 + brightness * 100}, ${52 + brightness * 100}, 0.88)`;
-      const bottomColor = isActive
-        ? `rgba(${38 + brightness * 60}, ${62 + brightness * 40}, ${32 + brightness * 40}, 0.82)`
-        : `rgba(${16 + brightness * 80}, ${26 + brightness * 80}, ${34 + brightness * 80}, 0.78)`;
-      const borderColor = isActive
-        ? `rgba(${144 + brightness * 80}, ${218 + brightness * 30}, ${148 + brightness * 60}, 0.5)`
-        : `rgba(${160 + brightness * 80}, ${200 + brightness * 40}, ${230 + brightness * 20}, 0.32)`;
+      ctx.fillStyle = isActive
+        ? `rgba(${45 + brightness * 60}, ${70 + brightness * 50}, ${35 + brightness * 40}, 0.94)`
+        : `rgba(${22 + brightness * 80}, ${32 + brightness * 80}, ${42 + brightness * 80}, 0.92)`;
+      ctx.fillRect(btn.x, btn.y, btn.w, btn.h);
+      ctx.strokeStyle = isActive
+        ? `rgba(${120 + brightness * 80}, ${190 + brightness * 40}, ${120 + brightness * 50}, 0.6)`
+        : `rgba(${80 + brightness * 60}, ${95 + brightness * 50}, ${110 + brightness * 30}, 0.45)`;
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(btn.x, btn.y, btn.w, btn.h);
 
-      drawPanel(btn.x, btn.y, btn.w, btn.h, {
-        top: topColor,
-        bottom: bottomColor,
-        border: borderColor,
-        radius: 11,
-      });
-
-      ctx.fillStyle = isActive ? "#d4ffd8" : "#e4f0f8";
-      ctx.font = "800 18px Avenir Next, Trebuchet MS, sans-serif";
+      ctx.fillStyle = isActive ? "#c8f0c8" : "#c0d4e0";
+      ctx.font = "700 22px monospace";
       const textW = ctx.measureText(btn.label).width;
       const tx = btn.x + (btn.w - textW) * 0.5;
-      const ty = btn.sublabel ? btn.y + 26 : btn.y + 36;
+      const ty = btn.y + TOUCH_BTN_H * 0.58;
       ctx.fillText(btn.label, tx, ty);
-
-      if (btn.sublabel) {
-        ctx.font = "600 12px Avenir Next, Trebuchet MS, sans-serif";
-        ctx.fillStyle = isActive ? "rgba(180, 240, 185, 0.8)" : "rgba(190, 210, 230, 0.7)";
-        const subW = ctx.measureText(btn.sublabel).width;
-        ctx.fillText(btn.sublabel, btn.x + (btn.w - subW) * 0.5, btn.y + 50);
-      }
     }
   }
 
@@ -4687,6 +4745,92 @@
     }
   }
 
+  function drawGroundScars() {
+    for (const scar of state.groundScars) {
+      ctx.fillStyle = `rgba(40, 30, 20, ${scar.alpha * 0.3})`;
+      ctx.beginPath();
+      ctx.ellipse(scar.x, scar.y + 4, scar.w * 0.5, 6, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  function drawDustClouds() {
+    for (const p of state.dustClouds) {
+      const t = clamp(p.life / p.maxLife, 0, 1);
+      ctx.fillStyle = `rgba(180, 165, 140, ${t * p.alpha})`;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  function drawBranchHpBars() {
+    const selected = state.trees.find(t => t.id === state.selectedTreeId);
+    if (!selected || selected.fallen || state.mode !== "playing") return;
+    for (const branch of selected.branches) {
+      if (branch.cut) continue;
+      const dmg = getBranchDamageRatio(branch);
+      if (dmg < 0.01) continue;
+      const seg = getBranchSegment(selected, branch);
+      const mx = (seg.x1 + seg.x2) * 0.5;
+      const my = (seg.y1 + seg.y2) * 0.5 - 10;
+      const barW = 28;
+      const barH = 4;
+      const hp = clamp((branch.hp || 0) / (branch.maxHp || 1), 0, 1);
+      ctx.fillStyle = "rgba(0,0,0,0.5)";
+      ctx.fillRect(mx - barW * 0.5, my, barW, barH);
+      const hpColor = hp > 0.5 ? "#6fc96f" : hp > 0.25 ? "#e8c44a" : "#e85454";
+      ctx.fillStyle = hpColor;
+      ctx.fillRect(mx - barW * 0.5, my, barW * hp, barH);
+      ctx.strokeStyle = "rgba(255,255,255,0.3)";
+      ctx.lineWidth = 0.5;
+      ctx.strokeRect(mx - barW * 0.5, my, barW, barH);
+    }
+  }
+
+  function drawFlowFlash() {
+    if (state.flowFlash > 0) {
+      const intensity = state.flowFlash * 0.15;
+      ctx.fillStyle = `rgba(255, 240, 180, ${intensity})`;
+      ctx.fillRect(0, 0, WORLD.width, WORLD.height);
+    }
+  }
+
+  function drawFlowMeter() {
+    if (state.mode !== "playing" || state.flowStreak < 2) return;
+    const streak = state.flowStreak;
+    const timer = state.flowTimer;
+    const maxTimer = 1.45;
+    const pct = clamp(timer / maxTimer, 0, 1);
+    const cx = WORLD.width * 0.5;
+    const y = isMobile ? 82 : 96;
+
+    const glow = streak >= 5 ? 0.6 : streak >= 3 ? 0.35 : 0.15;
+    const textColor = streak >= 7 ? "#ffd080" : streak >= 5 ? "#f8e878" : streak >= 3 ? "#d8f8c4" : "#c8e8f0";
+
+    ctx.fillStyle = `rgba(255, 230, 150, ${glow * (0.5 + Math.sin(state.elapsed * 8) * 0.5)})`;
+    ctx.beginPath();
+    ctx.arc(cx, y, 36 + streak * 3, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = "rgba(0, 0, 0, 0.55)";
+    ctx.beginPath();
+    ctx.roundRect(cx - 50, y - 16, 100, 32, 8);
+    ctx.fill();
+
+    ctx.strokeStyle = `rgba(255, 230, 150, ${0.3 + pct * 0.4})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(cx, y, 28, -Math.PI * 0.5, -Math.PI * 0.5 + Math.PI * 2 * pct);
+    ctx.stroke();
+
+    ctx.fillStyle = textColor;
+    ctx.font = `800 ${22 + streak * 2}px Avenir Next, Trebuchet MS, sans-serif`;
+    ctx.textAlign = "center";
+    ctx.fillText(`x${streak}`, cx, y + 8);
+    ctx.textAlign = "left";
+  }
+
   function drawScene() {
     drawBackground();
     drawAmbientParticles();
@@ -4698,6 +4842,7 @@
     ctx.save();
     ctx.translate(state.camera.x, state.camera.y);
 
+    drawGroundScars();
     drawWindTrails();
     for (const hazard of state.hazards) {
       drawHazard(hazard);
@@ -4707,18 +4852,22 @@
     for (const tree of state.trees) {
       drawTree(tree);
     }
+    drawBranchHpBars();
 
     drawBirds();
     drawTreeCat();
     drawWoodChips();
+    drawDustClouds();
     drawSlashTrails();
     drawNick();
     drawNickNotes();
     drawNickSpeechBubble();
     ctx.restore();
 
+    drawFlowFlash();
     drawScreenFx();
     drawHud();
+    drawFlowMeter();
     drawCallouts();
     drawTouchControls();
 
@@ -4765,6 +4914,47 @@
         isMobile ? "Tap to play again." : "Press Enter to play again.",
       ]);
     }
+
+    if (isPortrait()) {
+      drawPortraitOverlay();
+    }
+  }
+
+  function drawPortraitOverlay() {
+    ctx.fillStyle = "rgba(0, 0, 0, 0.82)";
+    ctx.fillRect(0, 0, WORLD.width, WORLD.height);
+
+    const cx = WORLD.width * 0.5;
+    const cy = WORLD.height * 0.5;
+
+    ctx.save();
+    ctx.translate(cx, cy - 60);
+
+    const now = performance.now() * 0.001;
+    const rock = Math.sin(now * 2.5) * 0.15;
+    ctx.rotate(rock);
+
+    ctx.strokeStyle = "#e8f0e0";
+    ctx.lineWidth = 6;
+    ctx.beginPath();
+    ctx.roundRect(-48, -64, 96, 128, 14);
+    ctx.stroke();
+
+    ctx.fillStyle = "#c8d8c0";
+    ctx.beginPath();
+    ctx.roundRect(-38, -52, 76, 104, 8);
+    ctx.fill();
+
+    ctx.restore();
+
+    ctx.fillStyle = "#c8e8c0";
+    ctx.font = "700 36px monospace";
+    ctx.textAlign = "center";
+    ctx.fillText("ROTATE YOUR DEVICE", cx, cy + 110);
+    ctx.font = "600 18px monospace";
+    ctx.fillStyle = "rgba(160, 185, 150, 0.85)";
+    ctx.fillText("LANDSCAPE MODE REQUIRED", cx, cy + 148);
+    ctx.textAlign = "left";
   }
 
   function toWorld(ev) {
@@ -4906,12 +5096,24 @@
       canvas.style.width = "100vw";
       canvas.style.height = "100vh";
     } else if (isMobile) {
-      canvas.style.width = "100vw";
-      canvas.style.height = "100vh";
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      const ratio = 1280 / 720;
+      if (vw / vh > ratio) {
+        canvas.style.height = vh + "px";
+        canvas.style.width = Math.round(vh * ratio) + "px";
+      } else {
+        canvas.style.width = vw + "px";
+        canvas.style.height = Math.round(vw / ratio) + "px";
+      }
     } else {
       canvas.style.width = "min(96vw, 1280px)";
       canvas.style.height = "min(92vh, 720px)";
     }
+  }
+
+  function isPortrait() {
+    return isMobile && window.innerHeight > window.innerWidth * 1.1;
   }
 
   function handleKeyDown(ev) {
@@ -4993,7 +5195,9 @@
 
     if (key === "1" || key === "arrowdown") {
       state.activeTier = "low";
-    } else if (key === "2" || key === "arrowup") {
+    } else if (key === "2") {
+      state.activeTier = "mid";
+    } else if (key === "3" || key === "arrowup") {
       state.activeTier = "high";
     } else if (key === "a") {
       if (state.controlMode === "axe") {
@@ -5020,8 +5224,11 @@
     if (state.adrenaline.timer <= 0 || state.adrenaline.duration <= 0) {
       return 1;
     }
-    const t = clamp(state.adrenaline.timer / state.adrenaline.duration, 0, 1);
-    return lerp(1, 0.58, t);
+    const raw = clamp(state.adrenaline.timer / state.adrenaline.duration, 0, 1);
+    const easeIn = raw < 0.15 ? raw / 0.15 : 1;
+    const easeOut = raw > 0.85 ? (1 - raw) / 0.15 : 1;
+    const t = easeIn * easeOut;
+    return lerp(1, 0.45, t);
   }
 
   function step(dt) {

@@ -46,17 +46,11 @@ canvas {
   }
 
   canvas {
-    width: 100vw;
-    height: 100vh;
+    /* Maintain 16:9 aspect ratio, fit within viewport */
+    width: min(100vw, calc(100vh * 16 / 9));
+    height: min(100vh, calc(100vw * 9 / 16));
     border: none;
     border-radius: 0;
     box-shadow: none;
-  }
-}
-
-@media (max-width: 768px) and (orientation: portrait) {
-  canvas {
-    width: 100vw;
-    height: 100vh;
   }
 }
