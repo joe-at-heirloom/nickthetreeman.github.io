@@ -7,6 +7,21 @@
   canvas.height = 720;
   canvas.style.touchAction = "none";
 
+  const isMobile =
+    "ontouchstart" in window ||
+    navigator.maxTouchPoints > 0 ||
+    window.matchMedia("(pointer: coarse)").matches;
+
+  const TOUCH_BTN_Y = 644;
+  const TOUCH_BTN_H = 62;
+  const TOUCH_BAR_TOP = 632;
+
+  function vibrate(ms) {
+    if (navigator.vibrate) {
+      navigator.vibrate(ms);
+    }
+  }
+
   const WORLD = {
     width: canvas.width,
     height: canvas.height,
@@ -325,6 +340,159 @@
       strength: 0,
     },
   };
+
+  let touchBtnFlash = {};
+
+  function flashTouchBtn(id) {
+    touchBtnFlash[id] = 0.18;
+  }
+
+  function getTouchButtons() {
+    if (!isMobile) return [];
+    if (state.mode !== "playing") return [];
+    const selected = state.trees.find((t) => t.id === state.selectedTreeId) || null;
+    const wedgeDir = selected ? selected.wedge : 0;
+    return [
+      {
+        id: "wedgeL",
+        label: "\u25C0",
+        sublabel: "WDG",
+        x: 20,
+        y: TOUCH_BTN_Y,
+        w: 82,
+        h: TOUCH_BTN_H,
+        active: wedgeDir < 0,
+        action() {
+          if (selected && !selected.fallen) {
+            selected.wedge = selected.wedge === -1 ? 0 : -1;
+            vibrate(15);
+          }
+        },
+      },
+      {
+        id: "wedgeR",
+        label: "\u25B6",
+        sublabel: "WDG",
+        x: 110,
+        y: TOUCH_BTN_Y,
+        w: 82,
+        h: TOUCH_BTN_H,
+        active: wedgeDir > 0,
+        action() {
+          if (selected && !selected.fallen) {
+            selected.wedge = selected.wedge === 1 ? 0 : 1;
+            vibrate(15);
+          }
+        },
+      },
+      {
+        id: "jump",
+        label: "JUMP",
+        x: 210,
+        y: TOUCH_BTN_Y,
+        w: 108,
+        h: TOUCH_BTN_H,
+        active: false,
+        action() {
+          jumpNick();
+          vibrate(20);
+        },
+      },
+      {
+        id: "cutL",
+        label: "\u2694 L",
+        x: 336,
+        y: TOUCH_BTN_Y,
+        w: 84,
+        h: TOUCH_BTN_H,
+        active: false,
+        action() {
+          if (state.controlMode === "axe") {
+            axeChopSelectedTree(-1);
+          } else {
+            cutSelectedTreeBranch(-1);
+          }
+          vibrate(25);
+        },
+      },
+      {
+        id: "cutR",
+        label: "R \u2694",
+        x: 428,
+        y: TOUCH_BTN_Y,
+        w: 84,
+        h: TOUCH_BTN_H,
+        active: false,
+        action() {
+          if (state.controlMode === "axe") {
+            axeChopSelectedTree(1);
+          } else {
+            cutSelectedTreeBranch(1);
+          }
+          vibrate(25);
+        },
+      },
+      {
+        id: "tierLow",
+        label: "LOW",
+        x: 790,
+        y: TOUCH_BTN_Y,
+        w: 80,
+        h: TOUCH_BTN_H,
+        active: state.activeTier === "low",
+        action() {
+          state.activeTier = "low";
+          vibrate(10);
+        },
+      },
+      {
+        id: "tierHigh",
+        label: "HIGH",
+        x: 878,
+        y: TOUCH_BTN_Y,
+        w: 82,
+        h: TOUCH_BTN_H,
+        active: state.activeTier === "high",
+        action() {
+          state.activeTier = "high";
+          vibrate(10);
+        },
+      },
+      {
+        id: "mode",
+        label: state.controlMode === "axe" ? "AXE" : "SAW",
+        x: 970,
+        y: TOUCH_BTN_Y,
+        w: 88,
+        h: TOUCH_BTN_H,
+        active: state.controlMode === "axe",
+        action() {
+          state.controlMode = state.controlMode === "saw" ? "axe" : "saw";
+          addCallout(
+            state.controlMode === "axe"
+              ? "Axe mode: notch + back-cut the trunk."
+              : "Saw mode: cut limbs by side/tier.",
+            state.controlMode === "axe" ? "#ffe0ad" : "#d3f4de",
+            1.6
+          );
+          vibrate(15);
+        },
+      },
+      {
+        id: "nextTree",
+        label: "TREE\u25B6",
+        x: 1068,
+        y: TOUCH_BTN_Y,
+        w: 96,
+        h: TOUCH_BTN_H,
+        active: false,
+        action() {
+          cycleSelectedTree(1);
+          vibrate(10);
+        },
+      },
+    ];
+  }
 
   function rand(min, max) {
     return min + Math.random() * (max - min);
@@ -1786,6 +1954,7 @@
       (0.28 + Math.min(1.4, Math.abs(imbalance)) * 0.22 + Math.abs(impetus) * 0.15);
     triggerAdrenaline(tree);
     frightenBirdsOnTree(tree);
+    vibrate([20, 15, 30]);
   }
 
   function distanceSq(x1, y1, x2, y2) {
@@ -1972,6 +2141,7 @@
     spawnWoodChips(impactX, impactY, branch.side, 0.36 + damage * 0.2);
     frightenBirdsNear(impactX, impactY, 112 + damage * 28, branch.side);
     addTrauma(branch.isBig ? 0.045 : 0.03);
+    vibrate(branch.isBig ? 18 : 10);
     return { hit: true, severed: false };
   }
 
@@ -2151,6 +2321,7 @@
     const impactY = (seg.y1 + seg.y2) * 0.5;
     spawnWoodChips(impactX, impactY, branch.side);
     frightenBirdsNear(impactX, impactY, 150, branch.side);
+    vibrate(branch.isBig ? 35 : 20);
     addTrauma(branch.isBig ? 0.08 : 0.05);
 
     const imbalance = computeTreeImbalance(tree);
@@ -2385,6 +2556,7 @@
     if (collisions > 0) {
       state.trunkCrashesThisLevel += collisions;
       addTrauma(0.62 + collisions * 0.15 + oldLadyHits * 0.22);
+      vibrate([40, 30, 60]);
       if (oldLadyHits > 0) {
         addCallout(
           oldLadyHits > 1 ? `Old ladies hit x${oldLadyHits}` : "Old lady hit!",
@@ -3836,6 +4008,10 @@
   }
 
   function drawHud() {
+    if (isMobile) {
+      drawHudMobile();
+      return;
+    }
     drawPanel(18, 16, 512, 200, {
       top: "rgba(22, 38, 44, 0.84)",
       bottom: "rgba(12, 21, 27, 0.72)",
@@ -4045,6 +4221,77 @@
     }
   }
 
+  function drawHudMobile() {
+    const selected = getSelectedTree();
+    const modeLabel = state.controlMode === "axe" ? "AXE" : "SAW";
+    const tierLabel = state.activeTier === "high" ? "HI" : "LO";
+    const gustLabel = state.gust.active
+      ? `${state.gust.dir > 0 ? "GUST\u25B6" : "\u25C0GUST"}`
+      : `Gust ${Math.max(0, state.gust.cooldown).toFixed(0)}s`;
+
+    drawPanel(10, 8, 420, 52, {
+      top: "rgba(22, 38, 44, 0.88)",
+      bottom: "rgba(12, 21, 27, 0.78)",
+      radius: 10,
+    });
+
+    ctx.fillStyle = "#f4faf6";
+    ctx.font = "700 20px Avenir Next, Trebuchet MS, sans-serif";
+    ctx.fillText(`L${state.level}`, 20, 32);
+
+    drawMeter(52, 16, 120, 12, state.reputation / 100, "#72d97f", "#4dbf64", "Rep", `${Math.round(state.reputation)}%`);
+    drawMeter(52, 40, 120, 12, (state.wind + 0.85) / 1.7, "#8ec8ff", "#4f9ff5", "Wind", `${state.wind >= 0 ? "+" : ""}${state.wind.toFixed(1)}`);
+
+    ctx.fillStyle = "#d8eaf0";
+    ctx.font = "600 14px Avenir Next, Trebuchet MS, sans-serif";
+    ctx.fillText(`${modeLabel} | ${tierLabel} | Cut ${state.totalCut}`, 190, 26);
+    ctx.fillText(`${gustLabel} | Flow x${state.flowStreak}`, 190, 48);
+
+    if (selected && state.mode === "playing") {
+      const safeLabel =
+        selected.safeDirections && selected.safeDirections.length === 2
+          ? "Both"
+          : selected.safeDirectionHint < 0
+            ? "\u25C0Safe"
+            : selected.safeDirectionHint > 0
+              ? "Safe\u25B6"
+              : "?";
+      const proj = getProjectedFall(selected);
+      const projPct = Math.round(proj.certainty * 100);
+      const tipRisk = clamp(Math.abs(selected.imbalance) / Math.max(0.22, autoFallThreshold(selected)), 0, 1);
+
+      drawPanel(WORLD.width - 310, 8, 300, 52, {
+        top: "rgba(28, 37, 33, 0.86)",
+        bottom: "rgba(16, 26, 22, 0.76)",
+        radius: 10,
+      });
+
+      ctx.fillStyle = "#f8f5dd";
+      ctx.font = "700 14px Avenir Next, Trebuchet MS, sans-serif";
+      const speciesName = selected.species ? selected.species.name : "Tree";
+      ctx.fillText(`${speciesName}${selected.isBoss ? " BOSS" : ""} | ${safeLabel}`, WORLD.width - 296, 26);
+      ctx.font = "600 13px Avenir Next, Trebuchet MS, sans-serif";
+      ctx.fillStyle = "#d8eaf0";
+      const wedgeLabel = selected.wedge > 0 ? "Wdg\u25B6" : selected.wedge < 0 ? "\u25C0Wdg" : "NoWdg";
+      ctx.fillText(`Drift ${projPct}% | Tip ${Math.round(tipRisk * 100)}% | ${wedgeLabel}`, WORLD.width - 296, 48);
+
+      drawMeter(WORLD.width - 296, 53, 120, 4, tipRisk, "#ffd87b", "#f2994f", "", "");
+    }
+
+    if (state.contract) {
+      const contractW = 280;
+      drawPanel(WORLD.width * 0.5 - contractW * 0.5, 8, contractW, 32, {
+        top: "rgba(30, 42, 62, 0.84)",
+        bottom: "rgba(20, 30, 48, 0.7)",
+        border: "rgba(172, 203, 255, 0.28)",
+        radius: 8,
+      });
+      ctx.fillStyle = "#edf4ff";
+      ctx.font = "700 15px Avenir Next, Trebuchet MS, sans-serif";
+      ctx.fillText(state.contract.title, WORLD.width * 0.5 - contractW * 0.5 + 12, 30);
+    }
+  }
+
   function drawCallouts() {
     if (state.callouts.length === 0) {
       return;
@@ -4138,6 +4385,11 @@
 
     ctx.fillStyle = "rgba(8, 16, 18, 0.72)";
     ctx.fillRect(0, 0, WORLD.width, WORLD.height);
+
+    if (isMobile) {
+      drawMenuMobile(now, pulse);
+      return;
+    }
 
     const panelW = 1120;
     const panelH = 630;
@@ -4257,6 +4509,159 @@
     ctx.fillText("F toggles fullscreen • V starts fiddle dance mode", x + 52, y + 602);
   }
 
+  function drawMenuMobile(now, pulse) {
+    const panelW = WORLD.width - 40;
+    const panelH = WORLD.height - 40;
+    const x = 20;
+    const y = 20;
+
+    drawPanel(x, y, panelW, panelH, {
+      top: "rgba(231, 244, 232, 0.98)",
+      bottom: "rgba(208, 227, 207, 0.95)",
+      border: "rgba(74, 102, 68, 0.48)",
+      radius: 18,
+    });
+
+    ctx.fillStyle = "rgba(24, 50, 30, 0.98)";
+    ctx.font = "900 42px Avenir Next, Trebuchet MS, sans-serif";
+    ctx.fillText("NICK THE TREE MAN", x + 30, y + 58);
+    ctx.fillStyle = "rgba(46, 76, 52, 0.95)";
+    ctx.font = "700 20px Avenir Next, Trebuchet MS, sans-serif";
+    ctx.fillText("Town Tree Crew Bootcamp", x + 32, y + 86);
+
+    ctx.strokeStyle = `rgba(255, 230, 162, ${0.34 + pulse})`;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(x + 30, y + 100);
+    ctx.lineTo(x + panelW - 30, y + 100);
+    ctx.stroke();
+
+    const cardW = (panelW - 80) / 3;
+    const cardY = y + 114;
+    drawMenuTutorialCard(
+      x + 20,
+      cardY,
+      cardW,
+      160,
+      "1: Read The Lean",
+      [
+        "Tap trees to select them.",
+        "Watch fall direction lines.",
+        "Use LOW/HIGH tier buttons.",
+      ],
+      "#3d6d47"
+    );
+    drawMenuTutorialCard(
+      x + 30 + cardW,
+      cardY,
+      cardW,
+      160,
+      "2: Cut With Intent",
+      [
+        "Swipe across branches to cut.",
+        "Use L/R buttons for key cuts.",
+        "Toggle SAW/AXE mode below.",
+      ],
+      "#49609b"
+    );
+    drawMenuTutorialCard(
+      x + 40 + cardW * 2,
+      cardY,
+      cardW,
+      160,
+      "3: Drop It Safe",
+      [
+        "Set wedge direction with buttons.",
+        "Axe: notch, then back-cut.",
+        "JUMP dodges falling trunks.",
+      ],
+      "#8a5733"
+    );
+
+    drawPanel(x + 20, y + 290, panelW - 40, 66, {
+      top: "rgba(30, 45, 60, 0.88)",
+      bottom: "rgba(17, 27, 38, 0.83)",
+      border: "rgba(182, 212, 244, 0.35)",
+      radius: 12,
+    });
+    ctx.fillStyle = "#eaf4ff";
+    ctx.font = "700 22px Avenir Next, Trebuchet MS, sans-serif";
+    ctx.fillText("Training Contract: Main Street Shift", x + 40, y + 320);
+    ctx.font = "600 16px Avenir Next, Trebuchet MS, sans-serif";
+    ctx.fillStyle = "rgba(208, 225, 244, 0.95)";
+    ctx.fillText(
+      "Balance trees and force clean falls without collateral damage.",
+      x + 40,
+      y + 345
+    );
+
+    const tapAlpha = 0.7 + Math.sin(now * 4) * 0.3;
+    ctx.fillStyle = `rgba(255, 220, 168, ${tapAlpha})`;
+    ctx.font = "800 38px Avenir Next, Trebuchet MS, sans-serif";
+    const tapText = "TAP ANYWHERE TO START";
+    const tapW = ctx.measureText(tapText).width;
+    ctx.fillText(tapText, (WORLD.width - tapW) * 0.5, y + panelH - 42);
+
+    ctx.font = "600 15px Avenir Next, Trebuchet MS, sans-serif";
+    ctx.fillStyle = "rgba(90, 120, 80, 0.85)";
+    const tipText = "Turn your phone sideways for the best experience";
+    const tipW = ctx.measureText(tipText).width;
+    ctx.fillText(tipText, (WORLD.width - tipW) * 0.5, y + panelH - 16);
+  }
+
+  function drawTouchControls() {
+    const buttons = getTouchButtons();
+    if (buttons.length === 0) return;
+
+    for (const id in touchBtnFlash) {
+      if (touchBtnFlash[id] > 0) {
+        touchBtnFlash[id] = Math.max(0, touchBtnFlash[id] - 0.016);
+      }
+    }
+
+    ctx.fillStyle = "rgba(0, 0, 0, 0.35)";
+    ctx.beginPath();
+    ctx.roundRect(6, TOUCH_BAR_TOP, WORLD.width - 12, 84, 14);
+    ctx.fill();
+
+    for (const btn of buttons) {
+      const flash = touchBtnFlash[btn.id] || 0;
+      const isActive = btn.active;
+      const brightness = flash > 0 ? 0.4 + flash * 2.5 : 0;
+
+      const topColor = isActive
+        ? `rgba(${62 + brightness * 80}, ${92 + brightness * 60}, ${52 + brightness * 60}, 0.92)`
+        : `rgba(${28 + brightness * 100}, ${42 + brightness * 100}, ${52 + brightness * 100}, 0.88)`;
+      const bottomColor = isActive
+        ? `rgba(${38 + brightness * 60}, ${62 + brightness * 40}, ${32 + brightness * 40}, 0.82)`
+        : `rgba(${16 + brightness * 80}, ${26 + brightness * 80}, ${34 + brightness * 80}, 0.78)`;
+      const borderColor = isActive
+        ? `rgba(${144 + brightness * 80}, ${218 + brightness * 30}, ${148 + brightness * 60}, 0.5)`
+        : `rgba(${160 + brightness * 80}, ${200 + brightness * 40}, ${230 + brightness * 20}, 0.32)`;
+
+      drawPanel(btn.x, btn.y, btn.w, btn.h, {
+        top: topColor,
+        bottom: bottomColor,
+        border: borderColor,
+        radius: 11,
+      });
+
+      ctx.fillStyle = isActive ? "#d4ffd8" : "#e4f0f8";
+      ctx.font = "800 18px Avenir Next, Trebuchet MS, sans-serif";
+      const textW = ctx.measureText(btn.label).width;
+      const tx = btn.x + (btn.w - textW) * 0.5;
+      const ty = btn.sublabel ? btn.y + 26 : btn.y + 36;
+      ctx.fillText(btn.label, tx, ty);
+
+      if (btn.sublabel) {
+        ctx.font = "600 12px Avenir Next, Trebuchet MS, sans-serif";
+        ctx.fillStyle = isActive ? "rgba(180, 240, 185, 0.8)" : "rgba(190, 210, 230, 0.7)";
+        const subW = ctx.measureText(btn.sublabel).width;
+        ctx.fillText(btn.sublabel, btn.x + (btn.w - subW) * 0.5, btn.y + 50);
+      }
+    }
+  }
+
   function drawScreenFx() {
     const vig = ctx.createRadialGradient(
       WORLD.width * 0.5,
@@ -4315,6 +4720,7 @@
     drawScreenFx();
     drawHud();
     drawCallouts();
+    drawTouchControls();
 
     if (state.mode === "menu") {
       drawMenuTutorialOverlay();
@@ -4330,7 +4736,7 @@
         `Reputation penalty: -${state.levelReport.penalty}`,
         `Flow bonus: +${state.levelReport.flowBonus || 0} (best x${state.levelReport.bestFlow || 0})`,
         `Current reputation: ${state.levelReport.reputation}`,
-        "Press Enter for next level.",
+        isMobile ? "Tap to continue." : "Press Enter for next level.",
       ]);
     } else if (state.mode === "gameover" && state.levelReport) {
       const failTitle =
@@ -4346,7 +4752,7 @@
         `Trunk crashes: ${state.levelReport.trunkCrashes || 0}`,
         `Total limbs cut: ${state.totalCut}`,
         `Total valuables saved: ${state.totalSaved}`,
-        "Press Enter to restart from level 1.",
+        isMobile ? "Tap to restart." : "Press Enter to restart from level 1.",
       ]);
     } else if (state.mode === "victory" && state.levelReport) {
       drawOverlayPanel("Town Saved", [
@@ -4356,7 +4762,7 @@
         `Final style rank: ${state.levelReport.styleRank || "Steady"}`,
         `Best flow streak: x${state.bestFlow}`,
         `Final reputation: ${state.reputation}`,
-        "Press Enter to play again.",
+        isMobile ? "Tap to play again." : "Press Enter to play again.",
       ]);
     }
   }
@@ -4377,7 +4783,22 @@
   function startPointer(ev) {
     const pos = toWorld(ev);
     const now = performance.now();
-    if (state.mode === "playing") {
+
+    if (isMobile && state.mode === "playing") {
+      const buttons = getTouchButtons();
+      for (const btn of buttons) {
+        if (pointInRect(pos.x, pos.y, btn)) {
+          btn.action();
+          flashTouchBtn(btn.id);
+          state.pointer.down = false;
+          resetPointerTrail();
+          state.pointer.lastTap = null;
+          return;
+        }
+      }
+    }
+
+    if (!isMobile && state.mode === "playing") {
       const showtimeButton = getShowtimeButtonRect();
       if (pointInRect(pos.x, pos.y, showtimeButton)) {
         toggleNickShowtime();
@@ -4387,6 +4808,18 @@
         return;
       }
     }
+
+    if (state.mode === "levelComplete") {
+      startLevel(state.level + 1);
+      vibrate(20);
+      return;
+    }
+    if (state.mode === "gameover" || state.mode === "victory") {
+      restartGame();
+      vibrate(20);
+      return;
+    }
+
     state.pointer.down = true;
     state.pointer.x = pos.x;
     state.pointer.y = pos.y;
@@ -4395,6 +4828,7 @@
 
     if (state.mode === "menu") {
       restartGame();
+      vibrate(30);
       state.pointer.down = false;
       resetPointerTrail();
       state.pointer.lastTap = null;
@@ -4424,6 +4858,10 @@
     const pos = toWorld(ev);
     state.pointer.x = pos.x;
     state.pointer.y = pos.y;
+
+    if (isMobile && pos.y > TOUCH_BAR_TOP) {
+      return;
+    }
 
     if (state.pointer.down && state.mode === "playing") {
       const path = state.pointer.path;
@@ -4465,6 +4903,9 @@
 
   function syncCanvasPresentation() {
     if (document.fullscreenElement === canvas) {
+      canvas.style.width = "100vw";
+      canvas.style.height = "100vh";
+    } else if (isMobile) {
       canvas.style.width = "100vw";
       canvas.style.height = "100vh";
     } else {
