@@ -12,9 +12,9 @@
     navigator.maxTouchPoints > 0 ||
     window.matchMedia("(pointer: coarse)").matches;
 
-  const TOUCH_BTN_Y = 644;
-  const TOUCH_BTN_H = 62;
-  const TOUCH_BAR_TOP = 632;
+  const TOUCH_BTN_Y = 614;
+  const TOUCH_BTN_H = 90;
+  const TOUCH_BAR_TOP = 602;
 
   function vibrate(ms) {
     if (navigator.vibrate) {
@@ -355,11 +355,10 @@
     return [
       {
         id: "wedgeL",
-        label: "\u25C0",
-        sublabel: "WDG",
-        x: 20,
+        label: "\u25C0 WDG",
+        x: 14,
         y: TOUCH_BTN_Y,
-        w: 82,
+        w: 118,
         h: TOUCH_BTN_H,
         active: wedgeDir < 0,
         action() {
@@ -371,11 +370,10 @@
       },
       {
         id: "wedgeR",
-        label: "\u25B6",
-        sublabel: "WDG",
-        x: 110,
+        label: "WDG \u25B6",
+        x: 140,
         y: TOUCH_BTN_Y,
-        w: 82,
+        w: 118,
         h: TOUCH_BTN_H,
         active: wedgeDir > 0,
         action() {
@@ -388,9 +386,9 @@
       {
         id: "jump",
         label: "JUMP",
-        x: 210,
+        x: 274,
         y: TOUCH_BTN_Y,
-        w: 108,
+        w: 130,
         h: TOUCH_BTN_H,
         active: false,
         action() {
@@ -400,10 +398,10 @@
       },
       {
         id: "cutL",
-        label: "\u2694 L",
-        x: 336,
+        label: "\u2694 CUT L",
+        x: 420,
         y: TOUCH_BTN_Y,
-        w: 84,
+        w: 120,
         h: TOUCH_BTN_H,
         active: false,
         action() {
@@ -417,10 +415,10 @@
       },
       {
         id: "cutR",
-        label: "R \u2694",
-        x: 428,
+        label: "CUT R \u2694",
+        x: 548,
         y: TOUCH_BTN_Y,
-        w: 84,
+        w: 120,
         h: TOUCH_BTN_H,
         active: false,
         action() {
@@ -437,7 +435,7 @@
         label: "LOW",
         x: 790,
         y: TOUCH_BTN_Y,
-        w: 80,
+        w: 100,
         h: TOUCH_BTN_H,
         active: state.activeTier === "low",
         action() {
@@ -448,9 +446,9 @@
       {
         id: "tierHigh",
         label: "HIGH",
-        x: 878,
+        x: 898,
         y: TOUCH_BTN_Y,
-        w: 82,
+        w: 100,
         h: TOUCH_BTN_H,
         active: state.activeTier === "high",
         action() {
@@ -461,9 +459,9 @@
       {
         id: "mode",
         label: state.controlMode === "axe" ? "AXE" : "SAW",
-        x: 970,
+        x: 1008,
         y: TOUCH_BTN_Y,
-        w: 88,
+        w: 100,
         h: TOUCH_BTN_H,
         active: state.controlMode === "axe",
         action() {
@@ -480,10 +478,10 @@
       },
       {
         id: "nextTree",
-        label: "TREE\u25B6",
-        x: 1068,
+        label: "TREE \u25B6",
+        x: 1118,
         y: TOUCH_BTN_Y,
-        w: 96,
+        w: 148,
         h: TOUCH_BTN_H,
         active: false,
         action() {
@@ -4229,23 +4227,23 @@
       ? `${state.gust.dir > 0 ? "GUST\u25B6" : "\u25C0GUST"}`
       : `Gust ${Math.max(0, state.gust.cooldown).toFixed(0)}s`;
 
-    drawPanel(10, 8, 420, 52, {
-      top: "rgba(22, 38, 44, 0.88)",
-      bottom: "rgba(12, 21, 27, 0.78)",
-      radius: 10,
+    drawPanel(10, 6, 480, 72, {
+      top: "rgba(22, 38, 44, 0.9)",
+      bottom: "rgba(12, 21, 27, 0.82)",
+      radius: 12,
     });
 
     ctx.fillStyle = "#f4faf6";
-    ctx.font = "700 20px Avenir Next, Trebuchet MS, sans-serif";
-    ctx.fillText(`L${state.level}`, 20, 32);
+    ctx.font = "700 28px Avenir Next, Trebuchet MS, sans-serif";
+    ctx.fillText(`L${state.level}`, 22, 38);
 
-    drawMeter(52, 16, 120, 12, state.reputation / 100, "#72d97f", "#4dbf64", "Rep", `${Math.round(state.reputation)}%`);
-    drawMeter(52, 40, 120, 12, (state.wind + 0.85) / 1.7, "#8ec8ff", "#4f9ff5", "Wind", `${state.wind >= 0 ? "+" : ""}${state.wind.toFixed(1)}`);
+    drawMeter(62, 14, 150, 16, state.reputation / 100, "#72d97f", "#4dbf64", "Rep", `${Math.round(state.reputation)}%`);
+    drawMeter(62, 48, 150, 16, (state.wind + 0.85) / 1.7, "#8ec8ff", "#4f9ff5", "Wind", `${state.wind >= 0 ? "+" : ""}${state.wind.toFixed(1)}`);
 
     ctx.fillStyle = "#d8eaf0";
-    ctx.font = "600 14px Avenir Next, Trebuchet MS, sans-serif";
-    ctx.fillText(`${modeLabel} | ${tierLabel} | Cut ${state.totalCut}`, 190, 26);
-    ctx.fillText(`${gustLabel} | Flow x${state.flowStreak}`, 190, 48);
+    ctx.font = "600 20px Avenir Next, Trebuchet MS, sans-serif";
+    ctx.fillText(`${modeLabel} | ${tierLabel} | Cut ${state.totalCut}`, 230, 30);
+    ctx.fillText(`${gustLabel} | Flow x${state.flowStreak}`, 230, 60);
 
     if (selected && state.mode === "playing") {
       const safeLabel =
@@ -4260,35 +4258,35 @@
       const projPct = Math.round(proj.certainty * 100);
       const tipRisk = clamp(Math.abs(selected.imbalance) / Math.max(0.22, autoFallThreshold(selected)), 0, 1);
 
-      drawPanel(WORLD.width - 310, 8, 300, 52, {
-        top: "rgba(28, 37, 33, 0.86)",
-        bottom: "rgba(16, 26, 22, 0.76)",
-        radius: 10,
+      drawPanel(WORLD.width - 380, 6, 370, 72, {
+        top: "rgba(28, 37, 33, 0.9)",
+        bottom: "rgba(16, 26, 22, 0.8)",
+        radius: 12,
       });
 
       ctx.fillStyle = "#f8f5dd";
-      ctx.font = "700 14px Avenir Next, Trebuchet MS, sans-serif";
+      ctx.font = "700 20px Avenir Next, Trebuchet MS, sans-serif";
       const speciesName = selected.species ? selected.species.name : "Tree";
-      ctx.fillText(`${speciesName}${selected.isBoss ? " BOSS" : ""} | ${safeLabel}`, WORLD.width - 296, 26);
-      ctx.font = "600 13px Avenir Next, Trebuchet MS, sans-serif";
+      ctx.fillText(`${speciesName}${selected.isBoss ? " BOSS" : ""} | ${safeLabel}`, WORLD.width - 366, 30);
+      ctx.font = "600 18px Avenir Next, Trebuchet MS, sans-serif";
       ctx.fillStyle = "#d8eaf0";
       const wedgeLabel = selected.wedge > 0 ? "Wdg\u25B6" : selected.wedge < 0 ? "\u25C0Wdg" : "NoWdg";
-      ctx.fillText(`Drift ${projPct}% | Tip ${Math.round(tipRisk * 100)}% | ${wedgeLabel}`, WORLD.width - 296, 48);
+      ctx.fillText(`Drift ${projPct}% | Tip ${Math.round(tipRisk * 100)}% | ${wedgeLabel}`, WORLD.width - 366, 58);
 
-      drawMeter(WORLD.width - 296, 53, 120, 4, tipRisk, "#ffd87b", "#f2994f", "", "");
+      drawMeter(WORLD.width - 366, 66, 160, 6, tipRisk, "#ffd87b", "#f2994f", "", "");
     }
 
     if (state.contract) {
-      const contractW = 280;
-      drawPanel(WORLD.width * 0.5 - contractW * 0.5, 8, contractW, 32, {
-        top: "rgba(30, 42, 62, 0.84)",
-        bottom: "rgba(20, 30, 48, 0.7)",
-        border: "rgba(172, 203, 255, 0.28)",
-        radius: 8,
+      const contractW = 340;
+      drawPanel(WORLD.width * 0.5 - contractW * 0.5, 6, contractW, 38, {
+        top: "rgba(30, 42, 62, 0.86)",
+        bottom: "rgba(20, 30, 48, 0.74)",
+        border: "rgba(172, 203, 255, 0.3)",
+        radius: 10,
       });
       ctx.fillStyle = "#edf4ff";
-      ctx.font = "700 15px Avenir Next, Trebuchet MS, sans-serif";
-      ctx.fillText(state.contract.title, WORLD.width * 0.5 - contractW * 0.5 + 12, 30);
+      ctx.font = "700 20px Avenir Next, Trebuchet MS, sans-serif";
+      ctx.fillText(state.contract.title, WORLD.width * 0.5 - contractW * 0.5 + 14, 32);
     }
   }
 
@@ -4619,9 +4617,9 @@
       }
     }
 
-    ctx.fillStyle = "rgba(0, 0, 0, 0.35)";
+    ctx.fillStyle = "rgba(0, 0, 0, 0.45)";
     ctx.beginPath();
-    ctx.roundRect(6, TOUCH_BAR_TOP, WORLD.width - 12, 84, 14);
+    ctx.roundRect(6, TOUCH_BAR_TOP, WORLD.width - 12, WORLD.height - TOUCH_BAR_TOP - 4, 14);
     ctx.fill();
 
     for (const btn of buttons) {
@@ -4630,35 +4628,28 @@
       const brightness = flash > 0 ? 0.4 + flash * 2.5 : 0;
 
       const topColor = isActive
-        ? `rgba(${62 + brightness * 80}, ${92 + brightness * 60}, ${52 + brightness * 60}, 0.92)`
-        : `rgba(${28 + brightness * 100}, ${42 + brightness * 100}, ${52 + brightness * 100}, 0.88)`;
+        ? `rgba(${62 + brightness * 80}, ${92 + brightness * 60}, ${52 + brightness * 60}, 0.94)`
+        : `rgba(${28 + brightness * 100}, ${42 + brightness * 100}, ${52 + brightness * 100}, 0.9)`;
       const bottomColor = isActive
-        ? `rgba(${38 + brightness * 60}, ${62 + brightness * 40}, ${32 + brightness * 40}, 0.82)`
-        : `rgba(${16 + brightness * 80}, ${26 + brightness * 80}, ${34 + brightness * 80}, 0.78)`;
+        ? `rgba(${38 + brightness * 60}, ${62 + brightness * 40}, ${32 + brightness * 40}, 0.86)`
+        : `rgba(${16 + brightness * 80}, ${26 + brightness * 80}, ${34 + brightness * 80}, 0.82)`;
       const borderColor = isActive
-        ? `rgba(${144 + brightness * 80}, ${218 + brightness * 30}, ${148 + brightness * 60}, 0.5)`
-        : `rgba(${160 + brightness * 80}, ${200 + brightness * 40}, ${230 + brightness * 20}, 0.32)`;
+        ? `rgba(${144 + brightness * 80}, ${218 + brightness * 30}, ${148 + brightness * 60}, 0.6)`
+        : `rgba(${160 + brightness * 80}, ${200 + brightness * 40}, ${230 + brightness * 20}, 0.38)`;
 
       drawPanel(btn.x, btn.y, btn.w, btn.h, {
         top: topColor,
         bottom: bottomColor,
         border: borderColor,
-        radius: 11,
+        radius: 13,
       });
 
       ctx.fillStyle = isActive ? "#d4ffd8" : "#e4f0f8";
-      ctx.font = "800 18px Avenir Next, Trebuchet MS, sans-serif";
+      ctx.font = "800 26px Avenir Next, Trebuchet MS, sans-serif";
       const textW = ctx.measureText(btn.label).width;
       const tx = btn.x + (btn.w - textW) * 0.5;
-      const ty = btn.sublabel ? btn.y + 26 : btn.y + 36;
+      const ty = btn.y + TOUCH_BTN_H * 0.58;
       ctx.fillText(btn.label, tx, ty);
-
-      if (btn.sublabel) {
-        ctx.font = "600 12px Avenir Next, Trebuchet MS, sans-serif";
-        ctx.fillStyle = isActive ? "rgba(180, 240, 185, 0.8)" : "rgba(190, 210, 230, 0.7)";
-        const subW = ctx.measureText(btn.sublabel).width;
-        ctx.fillText(btn.sublabel, btn.x + (btn.w - subW) * 0.5, btn.y + 50);
-      }
     }
   }
 
@@ -4765,6 +4756,47 @@
         isMobile ? "Tap to play again." : "Press Enter to play again.",
       ]);
     }
+
+    if (isPortrait()) {
+      drawPortraitOverlay();
+    }
+  }
+
+  function drawPortraitOverlay() {
+    ctx.fillStyle = "rgba(0, 0, 0, 0.82)";
+    ctx.fillRect(0, 0, WORLD.width, WORLD.height);
+
+    const cx = WORLD.width * 0.5;
+    const cy = WORLD.height * 0.5;
+
+    ctx.save();
+    ctx.translate(cx, cy - 60);
+
+    const now = performance.now() * 0.001;
+    const rock = Math.sin(now * 2.5) * 0.15;
+    ctx.rotate(rock);
+
+    ctx.strokeStyle = "#e8f0e0";
+    ctx.lineWidth = 6;
+    ctx.beginPath();
+    ctx.roundRect(-48, -64, 96, 128, 14);
+    ctx.stroke();
+
+    ctx.fillStyle = "#c8d8c0";
+    ctx.beginPath();
+    ctx.roundRect(-38, -52, 76, 104, 8);
+    ctx.fill();
+
+    ctx.restore();
+
+    ctx.fillStyle = "#f0f8e8";
+    ctx.font = "800 42px Avenir Next, Trebuchet MS, sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("ROTATE YOUR DEVICE", cx, cy + 110);
+    ctx.font = "600 22px Avenir Next, Trebuchet MS, sans-serif";
+    ctx.fillStyle = "rgba(220, 235, 210, 0.85)";
+    ctx.fillText("This game plays best in landscape", cx, cy + 148);
+    ctx.textAlign = "left";
   }
 
   function toWorld(ev) {
@@ -4906,12 +4938,24 @@
       canvas.style.width = "100vw";
       canvas.style.height = "100vh";
     } else if (isMobile) {
-      canvas.style.width = "100vw";
-      canvas.style.height = "100vh";
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      const ratio = 1280 / 720;
+      if (vw / vh > ratio) {
+        canvas.style.height = vh + "px";
+        canvas.style.width = Math.round(vh * ratio) + "px";
+      } else {
+        canvas.style.width = vw + "px";
+        canvas.style.height = Math.round(vw / ratio) + "px";
+      }
     } else {
       canvas.style.width = "min(96vw, 1280px)";
       canvas.style.height = "min(92vh, 720px)";
     }
+  }
+
+  function isPortrait() {
+    return isMobile && window.innerHeight > window.innerWidth * 1.1;
   }
 
   function handleKeyDown(ev) {
