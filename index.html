@@ -3,11 +3,41 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Nick the Tree Man</title>
+    <meta name="theme-color" content="#183e35" />
+    <meta name="description" content="A little sawdust. A lot of strategy. Help Nick fell tricky trees and keep the neighborhood safe in this woodland physics game." />
+    <title>Nick the Tree Man — A Little Sawdust, a Lot of Heart</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23183e35'/%3E%3Cpath d='M32 8 14 33h10L12 48h16v9h8v-9h16L40 33h10Z' fill='%23e9b66e'/%3E%3C/svg%3E" />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <canvas id="game" width="1280" height="720" aria-label="Nick the Tree Man game canvas"></canvas>
+    <header class="site-header">
+      <a class="brand" href="#" aria-label="Nick the Tree Man home" id="home-link">
+        <svg class="brand-mark" viewBox="0 0 48 48" aria-hidden="true"><path d="M24 4 9 25h8L7 38h13v7h8v-7h13L31 25h8Z" fill="currentColor"/></svg>
+        <span>NICK <span class="brand-small">THE TREE MAN</span></span>
+      </a>
+      <span class="header-caption">GOOD TREES. TRICKY JOBS. ONE NICK.</span>
+      <nav aria-label="Game navigation">
+        <button class="text-button" data-action="board">Job board <span class="nav-arrow">↗</span></button>
+        <button class="text-button" data-action="help">Field guide <span class="nav-arrow">↗</span></button>
+        <span class="nav-divider"></span>
+        <button class="icon-button" id="sound-button" data-action="sound" aria-label="Mute sound" title="Toggle sound (M)">♪</button>
+      </nav>
+    </header>
+    <main>
+      <div class="scene-caption"><span><i class="status-dot"></i> THE GREAT OUTDOORS, NOW HIRING.</span><span id="scene-status">EST. EARLY THIS MORNING</span></div>
+      <section id="game-shell" class="game-shell" aria-label="Nick the Tree Man arcade game">
+        <div class="game-stage" id="game-stage">
+          <canvas id="game" width="1280" height="720" tabindex="0" aria-label="Game world. Use A and D to cut, X to change tools, and Tab to select a tree. See the Field guide for all controls."></canvas>
+          <div id="game-ui" class="game-ui"></div>
+          <div id="game-toast" class="game-toast" role="status" aria-live="polite"></div>
+          <button class="fullscreen-exit" data-action="fullscreen" aria-label="Exit fullscreen">↙ Exit fullscreen</button>
+        </div>
+        <div id="action-dock" class="action-dock"></div>
+      </section>
+      <footer class="site-footer"><span>A LITTLE SAWDUST. A LOT OF HEART.</span><span>Made for a well-earned break. <span class="footer-tree">♧</span></span><button class="text-button" data-action="fullscreen">Go fullscreen <kbd>F</kbd></button></footer>
+    </main>
+    <script src="experience.js"></script>
+    <script src="scenery.js"></script>
     <script src="game.js"></script>
   </body>
 </html>

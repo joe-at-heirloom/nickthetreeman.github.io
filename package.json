@@ -1,14 +1,18 @@
 {
   "name": "nick-the-tree-man",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "main": "game.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "node scripts/serve.js",
+    "start": "node scripts/serve.js",
+    "test": "node scripts/verify-game.js",
+    "test:smoke": "node scripts/verify-game.js --smoke",
+    "check": "node --check game.js && node --check experience.js && node --check scenery.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "description": "",
+  "description": "An illustrated woodland physics arcade game with five jobs, directional tree felling, cat rescues, and a persistent career.",
   "dependencies": {
     "playwright": "^1.58.2"
   }

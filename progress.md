@@ -415,3 +415,27 @@ Original prompt: Build a game where you play as Nick the Tree Man - cut limbs fr
     - `output/web-game-intro-regression-playing/shot-1.png`
   - Safety regression rerun: `node verify-safety.js` => `{ "ok": true, "runs": 120 }`.
 - TODO: if you want onboarding to be interactive next, add a short in-level guided sequence (highlight selected tree, force one saw cut, then one axe notch/back-cut) before full free-play starts.
+
+## 2026-09-27 — Major woodland arcade upgrade
+- Request: "massively improve this game".
+- Direction: retain the tree physics, directional cuts, axe sequence, cats, jump, and fiddle personality; replace the overloaded presentation with a coherent illustrated woodland identity.
+- Adding five authored jobs, an actionable first-job guide, scoring/medals, persistent job unlocks, retry-current-job, pause/field guide, sound synthesis, full pointer/touch controls, and clearer fall guidance.
+- Baseline browser launches require escalation on macOS; local server running on 127.0.0.1:5173.
+- Replaced page shell with responsive header, canvas stage, accessible overlay layer and control dock.
+- Implemented the illustrated woodland scene in scenery.js: layered mountains and pines, species-specific foliage, tapered bark, selected-branch hit markers, striped safe landing zones, a truck/title scene, and a new animated Nick.
+- Added experience.js for responsive DOM menus/HUD/dock, a five-job board, live contextual teaching, scores/three-star job results, localStorage career records and sound preferences, a field guide, and pause/resume.
+- Added local Web Audio feedback for saw hits, axe chops, limb severing, tree falls, landings, jumps, fiddle notes, and result jingles.
+- Added cat rescue: play the fiddle for 1.6 seconds to start a visible descent; a completed rescue awards +200. Cats now appear from job 2 onward; occupied limbs remain protected.
+- Replaced the chaotic random opening with seeded authored job configurations and a two-tree guided first job. Untouched trees start with balanced branch mass. Later jobs include weather and the Heritage Giant.
+- Fixed the fall-direction override: an axe release now honors the notch, with Nick dodging instead of changing tree direction. Axe work no longer auto-releases prematurely. Collision checks use the entire fall arc; all protected-target hits fail immediately.
+- Implemented same-job retry, protected keyboard focus, pointer capture, real branch tapping, deterministic manual time, visibility auto-pause, reduced-motion behavior, and aspect-correct fullscreen that includes controls.
+- Removed roughly 1,500 lines of obsolete canvas UI/rendering code; core simulation and prior character features retained.
+- Baseline and first-pass screenshots visually reviewed. Full end-to-end campaign reached victory, verified cat rescue and career persistence, then caught a missing visible fullscreen exit path. Added an exit control and rerunning the complete suite.
+- Full browser suite passed all five jobs, three-star opening job, direct branch damage/severing, natural and axe-directed falls, cat protection/rescue, failure/retry, persistence, sound preference, fullscreen, and mobile buttons with zero browser errors.
+- Visual review found the portrait HUD was covering too much of the small canvas. Changed portrait layout to put guidance above the correctly proportioned canvas and tree/wind readouts below it, with 44px controls.
+- Made fullscreen verification wait for the browser's asynchronous fullscreen event instead of checking immediately; no gameplay shortcut or state injection is used by the tests.
+- Final campaign verification passed after portrait and keyboard fixes: all 10 behavior groups succeeded, all five jobs were completed via normal UI input, and consoleErrors was empty. Opening job earned 3 stars; later jobs earned 2 stars with the deliberate axe-only test route.
+- Verified Space still jumps after clicking/focusing a touch control; portrait canvas retains its 16:9 world proportions. Inspected mobile menu, mobile play, mobile field guide, weather scene, giant encounter, job results, career board, and victory screenshots.
+- Added working npm dev/start/check/test scripts and a self-contained temporary server for browser tests. Updated README with controls, scoring, progression, architecture, and test hooks.
+- No blocking TODOs. Optional future work: additional authored neighborhoods and custom challenge jobs. Current five-job campaign, controls, saves, and audiovisual presentation are complete.
+- Final required skill-client run completed and its latest screenshot/text state were inspected: playing on job 1, branch damage visible, two trees, and no errors-*.json. Final syntax and git diff whitespace checks also pass.

@@ -14,6 +14,17 @@
   };
 
   const MAX_LEVEL = 5;
+  const JOBS = window.TREE_JOBS;
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let randomSeed = 129;
+  let manualTime = new URLSearchParams(location.search).has('test');
+  function random() {
+    randomSeed |= 0;
+    randomSeed = randomSeed + 0x6D2B79F5 | 0;
+    let value = Math.imul(randomSeed ^ randomSeed >>> 15, 1 | randomSeed);
+    value = value + Math.imul(value ^ value >>> 7, 61 | value) ^ value;
+    return ((value ^ value >>> 14) >>> 0) / 4294967296;
+  }
   const MIN_SLASH_SPEED = 170;
   const NICK_GRAVITY = 1280;
   const NICK_JUMP_VELOCITY = 560;
@@ -245,6 +256,20 @@
 
   const state = {
     mode: "menu",
+    paused: false,
+    overlay: null,
+    visualTime: 0,
+    jobTime: 0,
+    score: 0,
+    jobStartScore: 0,
+    jobStartCut: 0,
+    jobStartSaved: 0,
+    jobStartDamaged: 0,
+    catRescueTime: 0,
+    catRescued: false,
+    toolSwing: 0,
+    floaters: [],
+    lastActionAt: -999,
     level: 1,
     reputation: 100,
     totalCut: 0,
@@ -326,8 +351,52 @@
     },
   };
 
+  const experience = window.createTreeExperience({ state, selected: getSelectedTree, action: handleAction });
+
+  function addScore(points, x, y, label = '') {
+    state.score += points;
+    state.floaters.push({ x, y, text: label || `+${points}`, life: 1.3, maxLife: 1.3 });
+  }
+
+  function handleAction(action) {
+    if (action === 'fullscreen') { toggleFullscreen(); return; }
+    if (action === 'sound') { document.getElementById('sound-button').click(); return; }
+    if (action === 'help' || action === 'board') { state.overlay = action; endPointer(); return; }
+    if (action === 'close') { state.overlay = null; state.paused = false; return; }
+    if (action === 'pause') { if (state.mode === 'playing') { state.paused = !state.paused; endPointer(); } return; }
+    if (action === 'resume') { state.paused = false; state.overlay = null; return; }
+    if (action === 'home') { state.mode = 'menu'; state.overlay = null; state.paused = false; state.callouts = []; endPointer(); return; }
+    if (action === 'start') { restartGame(Math.min(experience.record.unlocked, MAX_LEVEL)); return; }
+    if (action.startsWith('job-')) { const level = Number(action.slice(4)); if (level >= 1 && level <= experience.record.unlocked) restartGame(level); return; }
+    if (action === 'retry') {
+      state.score = state.jobStartScore; state.totalCut = state.jobStartCut;
+      state.totalSaved = state.jobStartSaved; state.totalDamaged = state.jobStartDamaged;
+      startLevel(state.level); return;
+    }
+    if (action === 'continue' && state.mode === 'levelComplete') { startLevel(state.level + 1); return; }
+    if (state.mode !== 'playing' || state.paused || state.overlay) return;
+    if (action === 'saw' || action === 'axe') { state.controlMode = action; return; }
+    if (action === 'low' || action === 'high') { state.activeTier = action; return; }
+    if (action === 'left' || action === 'right') {
+      if (state.visualTime - state.lastActionAt < .12) return;
+      state.lastActionAt = state.visualTime;
+      const side = action === 'left' ? -1 : 1;
+      if (state.controlMode === 'axe') axeChopSelectedTree(side); else cutSelectedTreeBranch(side);
+      return;
+    }
+    if (action === 'next') { cycleSelectedTree(1); return; }
+    if (action === 'fiddle') { toggleNickShowtime(); return; }
+    if (action === 'jump') { jumpNick(); return; }
+    const selected = getSelectedTree();
+    if (!selected || selected.fallen || selected.falling) return;
+    if (action.startsWith('wedge-')) {
+      selected.wedge = action === 'wedge-left' ? -1 : action === 'wedge-right' ? 1 : 0;
+      experience.sound('chop');
+    }
+  }
+
   function rand(min, max) {
-    return min + Math.random() * (max - min);
+    return min + random() * (max - min);
   }
 
   function clamp(v, min, max) {
@@ -338,27 +407,15 @@
     return a + (b - a) * t;
   }
 
-  function getHazardPenalty(type) {
-    return HAZARD_TYPES[type].penalty;
-  }
-
   function choose(arr) {
-    return arr[Math.floor(Math.random() * arr.length)];
-  }
-
-  function chooseContract(level) {
-    return CONTRACTS[(level - 1) % CONTRACTS.length];
-  }
-
-  function chooseDistrict(level) {
-    return DISTRICTS[(level - 1) % DISTRICTS.length];
+    return arr[Math.floor(random() * arr.length)];
   }
 
   function chooseSpecies(level) {
-    if (level >= 4 && Math.random() < 0.35) {
+    if (level >= 4 && random() < 0.35) {
       return TREE_SPECIES[2];
     }
-    if (level >= 2 && Math.random() < 0.4) {
+    if (level >= 2 && random() < 0.4) {
       return TREE_SPECIES[1];
     }
     return choose(TREE_SPECIES);
@@ -397,7 +454,7 @@
   function shuffled(arr) {
     const copy = arr.slice();
     for (let i = copy.length - 1; i > 0; i -= 1) {
-      const j = Math.floor(Math.random() * (i + 1));
+      const j = Math.floor(random() * (i + 1));
       const tmp = copy[i];
       copy[i] = copy[j];
       copy[j] = tmp;
@@ -428,8 +485,8 @@
     for (const tier of tiers) {
       const clusterCount =
         tier.id === "high"
-          ? (Math.random() < 0.55 + species.clusterBoost * 0.5 ? 2 : 1)
-          : (Math.random() < 0.28 + species.clusterBoost ? 2 : 1);
+          ? (random() < 0.55 + species.clusterBoost * 0.5 ? 2 : 1)
+          : (random() < 0.28 + species.clusterBoost ? 2 : 1);
       for (let cluster = 0; cluster < clusterCount; cluster += 1) {
         const clusterOffset = (cluster - (clusterCount - 1) / 2) * 0.09;
         const anchorRatio = clamp(
@@ -443,12 +500,12 @@
           (tier.id === "high" ? 0.1 : 0.03) +
           cluster * 0.04 +
           (contract.bigBranchBoost || 0);
-        const clusterBig = Math.random() < Math.min(0.75, bigChance);
+        const clusterBig = random() < Math.min(0.75, bigChance);
         const baseVOpen =
           rand(0.3, 0.62) + (tier.id === "high" ? 0.05 : 0) + species.splayBias;
 
         for (const side of [-1, 1]) {
-          const isBig = clusterBig && Math.random() < 0.76;
+          const isBig = clusterBig && random() < 0.76;
           const branchDeadness = clamp(
             rand(0, 0.72) + deadness * 0.35 + (isBig ? 0.06 : 0),
             0,
@@ -546,7 +603,7 @@
       branch.length *= rand(1.1, 1.22) * tierMul;
       branch.thickness = clamp(branch.thickness * rand(1.14, 1.3), 4.5, 15.5);
       branch.mass *= rand(1.24, 1.46) * (branch.tier === "high" ? 1.1 : 1);
-      if (branch.tier === "high" && Math.random() < 0.85) {
+      if (branch.tier === "high" && random() < 0.85) {
         branch.isBig = true;
       }
       branch.maxHp = getBranchDurability(branch, true);
@@ -561,7 +618,7 @@
     ];
     for (const tier of extraTiers) {
       for (const side of [-1, 1]) {
-        const fanCount = Math.random() < 0.45 ? 3 : 2;
+        const fanCount = random() < 0.45 ? 3 : 2;
         for (let i = 0; i < fanCount; i += 1) {
           const spread = (i - (fanCount - 1) / 2) * 0.045;
           const branchDeadness = clamp(rand(0.08, 0.74) + tree.deadness * 0.3, 0, 1);
@@ -734,6 +791,7 @@
           impactFlash: 0,
         };
 
+        if (hazards.some(other => Math.abs(other.x - x) < (other.w + hazard.w) / 2 + 14)) continue;
         const nextHazards = hazards.concat(hazard);
         if (allTreesRemainSafe(trees, nextHazards)) {
           hazards.push(hazard);
@@ -782,9 +840,9 @@
 
   function updateCameraShake(dt) {
     const power = state.camera.trauma * state.camera.trauma;
-    const magnitude = power * 16;
-    state.camera.x = (Math.random() * 2 - 1) * magnitude;
-    state.camera.y = (Math.random() * 2 - 1) * magnitude * 0.7;
+    const magnitude = reducedMotion ? 0 : power * 6;
+    state.camera.x = (random() * 2 - 1) * magnitude;
+    state.camera.y = (random() * 2 - 1) * magnitude * 0.7;
     state.camera.trauma = Math.max(0, state.camera.trauma - dt * 1.85);
   }
 
@@ -792,12 +850,12 @@
     if (!tree) {
       return;
     }
-    state.adrenaline.duration = 1;
-    state.adrenaline.timer = 1;
+    state.adrenaline.duration = reducedMotion ? 0 : .6;
+    state.adrenaline.timer = state.adrenaline.duration;
     state.adrenaline.sourceTreeId = tree.id;
     addTrauma(0.34);
     addCallout(
-      tree.isBoss ? "BOSS TIMBER MOMENT" : "Timber!",
+      tree.isBoss ? "Make way for the old giant!" : "Timber!",
       tree.isBoss ? "#ffd9a3" : "#f4efc3",
       1.1
     );
@@ -811,7 +869,7 @@
       if (branchPool.length === 0) {
         continue;
       }
-      const baseCount = tree.isBoss ? 4 : 1 + Math.floor(Math.random() * 2);
+      const baseCount = tree.isBoss ? 4 : 1 + Math.floor(random() * 2);
       const extra = level >= 4 ? 1 : 0;
       const count = Math.min(branchPool.length, baseCount + extra);
       const picks = shuffled(branchPool).slice(0, count);
@@ -828,7 +886,7 @@
           vy: 0,
           wingPhase: rand(0, Math.PI * 2),
           size: rand(4.2, 7.8),
-          tint: Math.random() < 0.4 ? "#2d2f38" : "#3c403f",
+          tint: random() < 0.4 ? "#2d2f38" : "#3c403f",
         });
         birdIndex += 1;
       }
@@ -879,15 +937,6 @@
     }
   }
 
-  function getShowtimeButtonRect() {
-    return {
-      x: 34,
-      y: 224,
-      w: 248,
-      h: 44,
-    };
-  }
-
   function nextNickQuote() {
     const quote = NICK_QUOTES[state.nickQuoteIndex % NICK_QUOTES.length];
     state.nickQuoteIndex = (state.nickQuoteIndex + 1) % NICK_QUOTES.length;
@@ -901,7 +950,8 @@
   }
 
   function spawnNickNote() {
-    const side = Math.random() < 0.5 ? -1 : 1;
+    experience.sound("fiddle");
+    const side = random() < 0.5 ? -1 : 1;
     const yBase = WORLD.groundY + state.nickY + (state.showtime.sway || 0);
     state.nickNotes.push({
       x: state.nickX + side * rand(20, 52),
@@ -911,7 +961,7 @@
       size: rand(8, 12),
       life: rand(0.7, 1.2),
       maxLife: 0,
-      kind: Math.random() < 0.58 ? 0 : 1,
+      kind: random() < 0.58 ? 0 : 1,
       phase: rand(0, Math.PI * 2),
     });
     const newest = state.nickNotes[state.nickNotes.length - 1];
@@ -1042,7 +1092,7 @@
       }
     }
 
-    if (ambient === "rain" && Math.random() < dt * 18) {
+    if (ambient === "rain" && random() < dt * 18) {
       spawnAmbientParticle(contract, true);
     } else if (ambient === "firefly" && state.ambientParticles.length < 44) {
       spawnAmbientParticle(contract);
@@ -1215,11 +1265,6 @@
   }
 
   function spawnTreeCat(level) {
-    const chance = clamp(0.24 + level * 0.08, 0.24, 0.58);
-    if (Math.random() > chance) {
-      state.treeCat = null;
-      return;
-    }
     const pick = chooseTreeCatBranch();
     if (!pick) {
       state.treeCat = null;
@@ -1252,7 +1297,7 @@
     };
     placeTreeCatOnBranch(cat, pick.tree, pick.branch);
     state.treeCat = cat;
-    addCallout("Cat in a tree: protect it.", "#ffd9ef", 2.2);
+    addCallout("Cat up a tree! Play your fiddle (V) to coax it down.", "#ffd9ef", 2.2);
   }
 
   function beginTreeCatMove(cat, targetTree, targetBranch) {
@@ -1341,6 +1386,27 @@
       return;
     }
 
+    if (cat.rescuing) {
+      cat.rescueProgress = clamp(cat.rescueProgress + dt / 1.2, 0, 1);
+      const t = cat.rescueProgress;
+      cat.x = lerp(cat.sourceX, state.nickX - 34, t);
+      cat.y = lerp(cat.sourceY, WORLD.groundY - 9, t) - Math.sin(t * Math.PI) * 45;
+      if (t >= 1) {
+        state.catRescued = true; state.treeCat = null;
+        addScore(200, state.nickX - 34, WORLD.groundY - 60, '+200 · CAT RESCUED');
+        addCallout('A little fiddle, a happy cat. +200', '#f6e6b3', 2.5);
+        experience.sound('complete');
+      }
+      return;
+    }
+    if (state.showtime.active) {
+      state.catRescueTime += dt;
+      if (state.catRescueTime > 1.6) {
+        cat.rescuing = true; cat.rescueProgress = 0; cat.sourceX = cat.x; cat.sourceY = cat.y;
+        cat.moving = false;
+        return;
+      }
+    } else state.catRescueTime = 0;
     cat.wobblePhase += dt * 3.4;
     if (cat.moving) {
       cat.moveProgress = clamp(cat.moveProgress + dt / cat.moveDuration, 0, 1);
@@ -1432,7 +1498,7 @@
   }
 
   function triggerGust(contract) {
-    const dir = Math.random() < 0.5 ? -1 : 1;
+    const dir = random() < 0.5 ? -1 : 1;
     const strength = rand(contract.gustStrength[0], contract.gustStrength[1]);
     const duration = rand(contract.gustDuration[0], contract.gustDuration[1]);
     state.gust.active = true;
@@ -1447,7 +1513,7 @@
     }
 
     addCallout(
-      `${dir > 0 ? "Crosswind right" : "Crosswind left"} ${strength.toFixed(2)}`,
+      `${dir > 0 ? "Crosswind right" : "Crosswind left"} · ${Math.round(strength * 45)} mph`,
       contract.accent || "#dcecff",
       1.8
     );
@@ -1481,12 +1547,12 @@
       state.gust.timer -= dt;
       const fade = clamp(state.gust.timer / Math.max(0.2, state.gust.duration), 0, 1);
       gustMoment = state.gust.dir * state.gust.strength * (0.45 + 0.55 * fade);
-      if (Math.random() < dt * (5 + state.gust.strength * 18)) {
+      if (random() < dt * (5 + state.gust.strength * 18)) {
         spawnWindTrail(state.gust.dir, state.gust.strength);
       }
       if (
         contract.ambient === "rain" &&
-        Math.random() < dt * 1.2 &&
+        random() < dt * 1.2 &&
         state.lightningFlash <= 0
       ) {
         state.lightningFlash = rand(0.08, 0.16);
@@ -1508,121 +1574,74 @@
   }
 
   function startLevel(level) {
-    const contract = chooseContract(level);
-    const district = chooseDistrict(level);
-    state.level = level;
-    state.failReason = "";
-    state.activeTier = "low";
-    state.trunkCrashesThisLevel = 0;
-    state.elapsed = 0;
-    state.contract = contract;
-    state.district = district;
-    state.bossTreeId = null;
-    state.skyPreset = SKY_PRESETS[contract.skyPreset] || SKY_PRESETS.sunrise;
-    state.flowStreak = 0;
-    state.bestFlow = 0;
-    state.flowTimer = 0;
-    state.lastCutAt = -999;
-    state.windTrails = [];
-    state.crashBursts = [];
-    state.birds = [];
-    state.treeCat = null;
-    state.catGuardWarnAt = -999;
-    state.callouts = [];
-    state.lightningFlash = 0;
-    state.camera.x = 0;
-    state.camera.y = 0;
-    state.camera.trauma = 0;
-    state.adrenaline.timer = 0;
-    state.adrenaline.duration = 0;
-    state.adrenaline.sourceTreeId = null;
-    state.levelWind = rand(-0.22, 0.22) * contract.windBiasMul;
-    state.windPhase = rand(0, Math.PI * 2);
-    state.wind = state.levelWind;
-    state.gust.active = false;
-    state.gust.timer = 0;
-    state.gust.duration = 0;
-    state.gust.dir = 0;
-    state.gust.strength = 0;
-    scheduleNextGust(contract);
-    state.levelReport = null;
-    state.slashEchoes = [];
-    state.chips = [];
-    state.nickY = 0;
-    state.nickVy = 0;
-    state.nickNotes = [];
-    if (state.showtime.active) {
-      state.showtime.phase = 0;
-      state.showtime.noteTimer = 0.14;
-      state.showtime.quoteTimer = 0.8;
-      setNickSpeech(nextNickQuote(), 2.8);
-    } else {
-      state.showtime.sway = 0;
-      state.showtime.armSwing = 0;
-      state.nickSpeech.text = "";
-      state.nickSpeech.life = 0;
-      state.nickSpeech.maxLife = 0;
-    }
-
-    const treeCount = clamp(
-      2 + Math.floor(level * 0.8) + (contract.treeCountDelta || 0),
-      2,
-      6
-    );
-    const trees = [];
-    const laneWidth = (WORLD.width - 280) / Math.max(1, treeCount - 1);
-
-    for (let i = 0; i < treeCount; i += 1) {
-      const x = 140 + laneWidth * i + rand(-35, 35);
-      trees.push(createTree(`tree-${level}-${i}`, x, level, contract));
-    }
-
-    const hasBoss = level % 2 === 1 || level === MAX_LEVEL;
-    if (hasBoss && trees.length > 0) {
-      const bossIndex = Math.floor(trees.length * 0.5);
-      const bossX = clamp(
-        WORLD.width * 0.5 + rand(-85, 85),
-        160,
-        WORLD.width - 160
-      );
-      trees[bossIndex] = createBossTree(`boss-${level}`, bossX, level, contract);
-      state.bossTreeId = trees[bossIndex].id;
-    }
-
-    state.trees = trees;
-    state.hazards = createHazards(trees, level);
-    state.selectedTreeId = trees.length > 0 ? trees[0].id : null;
-    seedAmbientParticles(contract);
-    seedBirds(trees, level);
-    spawnTreeCat(level);
-    addCallout(
-      `${district.name}: ${district.tagline}`,
-      contract.accent || "#f4f5d5",
-      3.1
-    );
-    if (contract.introCallout) {
-      addCallout(contract.introCallout, contract.accent || "#f4f5d5", 2.6);
-    }
-    if (state.bossTreeId) {
-      addCallout("Boss tree on site: Heritage Giant", "#ffd9a6", 2.8);
-    }
-    const oldLady = getOldLadyCounts();
-    if (oldLady.total > 0) {
-      addCallout(
-        `Protect old ladies: ${oldLady.total} on this block.`,
-        "#ffd3dc",
-        2.4
-      );
-    }
-    state.mode = "playing";
+    const job = JOBS[level - 1];
+    if (!job) return;
+    randomSeed = job.seed;
+    const contract = { ...CONTRACTS[job.contract] };
+    if (level === 1) { contract.windAmp = .025; contract.windBiasMul = .12; contract.gustStrength = [.025, .05]; contract.gustInterval = [15, 20]; }
+    const district = DISTRICTS[job.district];
+    Object.assign(state, {
+      level, mode: 'playing', paused: false, overlay: null, failReason: '', activeTier: 'low',
+      trunkCrashesThisLevel: 0, elapsed: 0, jobTime: 0, contract, district, bossTreeId: null,
+      skyPreset: SKY_PRESETS[contract.skyPreset], flowStreak: 0, bestFlow: 0, flowTimer: 0, lastCutAt: -999,
+      windTrails: [], crashBursts: [], birds: [], treeCat: null, catGuardWarnAt: -999,
+      callouts: [], lightningFlash: 0, levelReport: null, slashEchoes: [], chips: [], floaters: [],
+      nickY: 0, nickVy: 0, nickNotes: [], controlMode: 'saw', toolSwing: 0, lastActionAt: -999, catRescueTime: 0, catRescued: false,
+      jobStartScore: state.score, jobStartCut: state.totalCut, jobStartSaved: state.totalSaved, jobStartDamaged: state.totalDamaged,
+    });
+    Object.assign(state.camera, {x: 0, y: 0, trauma: 0});
+    Object.assign(state.adrenaline, {timer: 0, duration: 0, sourceTreeId: null});
+    Object.assign(state.gust, {active: false, timer: 0, duration: 0, dir: 0, strength: 0});
+    Object.assign(state.showtime, {active: false, phase: 0, sway: 0, armSwing: 0, noteTimer: .35, quoteTimer: 3.8});
+    Object.assign(state.nickSpeech, {text: '', life: 0, maxLife: 0});
+    state.levelWind = rand(-.15, .15) * contract.windBiasMul;
+    state.windPhase = rand(0, Math.PI * 2); state.wind = state.levelWind;
+    scheduleNextGust(contract); endPointer(); state.pointer.lastTap = null;
+    const positions = level === 1 ? [330, 930] : level === 5 ? [195, 685, 1090] : job.trees === 3 ? [230, 650, 1050] : [185, 490, 805, 1110];
+    state.trees = positions.map((x, index) => {
+      const tree = level === 5 && index === 1 ? createBossTree(`boss-${level}`, x, level, contract) : createTree(`tree-${level}-${index}`, x, level, contract);
+      tree.height = tree.isBoss ? 378 : level === 1 ? 260 + index * 15 : 245 + (index % 2) * 38 + level * 5;
+      tree.radius = tree.isBoss ? 31 : 16 + (index % 2) * 4;
+      tree.deadness = Math.min(.48, tree.deadness);
+      tree.axe = createAxePlan(tree.isBoss, tree.height, tree.radius, tree.deadness);
+      if (level === 1) {
+        tree.species = TREE_SPECIES[index === 0 ? 0 : 1];
+        tree.branches = ['low','high'].flatMap((tier, i) => [-1,1].map((side, j) => ({
+          id: `${tree.id}-b${i*2+j}`, side, tier, cluster: 0, isBig: false,
+          mass: 1.65, splayAngle: .38, heightRatio: i === 0 ? .43 : .76,
+          length: i === 0 ? 89 : 101, thickness: 7, deadness: .12,
+          maxHp: 2, hp: 2, hitFlash: 0, cut: false,
+        })));
+      }
+      for (const b of tree.branches) b.length = clamp(b.length, 55, tree.isBoss ? 146 : 119);
+      // Begin with balanced limb mass so an untouched tree cannot randomly ruin a job.
+      const moments = [-1,1].map(side => tree.branches.filter(b => b.side === side).reduce((v,b) => v + b.mass * (.45 + b.heightRatio + (b.tier === 'high' ? .18 : 0)),0));
+      const mean = (moments[0] + moments[1]) / 2;
+      for (const b of tree.branches) b.mass *= mean / Math.max(.01, moments[b.side < 0 ? 0 : 1]);
+      if (tree.isBoss) state.bossTreeId = tree.id;
+      return tree;
+    });
+    if (level === 1) {
+      state.hazards = [{id:'home-1',type:'house',x:538,y:620,w:118,h:88,damaged:false,impactFlash:0},
+        {id:'car-1',type:'car',x:702,y:620,w:90,h:42,damaged:false,impactFlash:0},
+        {id:'neighbor-1',type:'oldlady',x:805,y:620,w:44,h:72,damaged:false,impactFlash:0}];
+      applySafetyBiasToTrees(state.trees, state.hazards);
+    } else state.hazards = createHazards(state.trees, level);
+    state.selectedTreeId = state.trees[0].id;
+    state.nickX = clamp(state.trees[0].x + 62, 60, 1220); state.pointer.x = state.nickX;
+    seedAmbientParticles(contract); seedBirds(state.trees, level);
+    if (level > 1) spawnTreeCat(level);
+    if (level > 1) addCallout(job.tag, '#f3e4b3', 2.8);
+    experience.invalidate();
   }
 
-  function restartGame() {
+  function restartGame(level = 1) {
     state.reputation = 100;
+    state.score = 0;
     state.totalCut = 0;
     state.totalSaved = 0;
     state.totalDamaged = 0;
-    startLevel(1);
+    startLevel(level);
   }
 
   function getTreeDisplayAngle(tree) {
@@ -1696,28 +1715,6 @@
     );
   }
 
-  function chooseNickSafeFallDirection(tree, preferredDirection) {
-    const leftClear = getNickFallClearance(tree, -1);
-    const rightClear = getNickFallClearance(tree, 1);
-    const required = tree.radius * 0.7 + NICK_BODY_RADIUS + 12;
-
-    let chosen = Math.sign(preferredDirection);
-    if (chosen === 0) {
-      chosen = rightClear >= leftClear ? 1 : -1;
-    }
-
-    let chosenClear = chosen > 0 ? rightClear : leftClear;
-    const altClear = chosen > 0 ? leftClear : rightClear;
-    if (chosenClear < required && altClear > chosenClear + 3) {
-      chosen *= -1;
-      chosenClear = altClear;
-    }
-    if (chosenClear < required) {
-      chosen = rightClear >= leftClear ? 1 : -1;
-    }
-    return chosen;
-  }
-
   function computeTreeImbalance(tree) {
     let branchMoment = 0;
     let liveCount = 0;
@@ -1775,9 +1772,10 @@
       direction = Math.sign(tree.deadBias);
     }
     if (direction === 0) {
-      direction = Math.random() < 0.5 ? -1 : 1;
+      direction = random() < 0.5 ? -1 : 1;
     }
-    direction = chooseNickSafeFallDirection(tree, direction);
+    tree.fallDirection = direction;
+    experience.sound("fall");
 
     tree.falling = true;
     tree.angle = tree.sway;
@@ -1910,7 +1908,7 @@
 
   function getBranchCutCandidate(tree, side, tier) {
     const tierMatches = tree.branches.filter(
-      (branch) => !branch.cut && branch.side === side && branch.tier === tier
+      (branch) => !branch.cut && !isTreeCatOnBranch(tree.id, branch.id) && branch.side === side && branch.tier === tier
     );
     if (tierMatches.length > 0) {
       return tierMatches.sort((a, b) => {
@@ -1921,7 +1919,7 @@
     }
 
     const sideMatches = tree.branches.filter(
-      (branch) => !branch.cut && branch.side === side
+      (branch) => !branch.cut && !isTreeCatOnBranch(tree.id, branch.id) && branch.side === side
     );
     if (sideMatches.length === 0) {
       return null;
@@ -1943,7 +1941,7 @@
   }
 
   function strikeBranch(tree, branch, seg, power) {
-    if (branch.cut) {
+    if (branch.cut || tree.falling || tree.fallen) {
       return { hit: false, severed: false };
     }
     if (shouldBlockCatBranchCut(tree, branch, true)) {
@@ -1955,6 +1953,8 @@
       branch.hp = maxHp;
     }
 
+    experience.sound("cut");
+    state.toolSwing = .25;
     const damage = clamp(power, 0.22, 3.4);
     const nextHp = branch.hp - damage;
     if (nextHp <= 0) {
@@ -1980,7 +1980,7 @@
       return false;
     }
     const tree = getSelectedTree();
-    if (!tree || tree.fallen) {
+    if (!tree || tree.fallen || tree.falling) {
       return false;
     }
 
@@ -2083,6 +2083,8 @@
     tree.axeBias = clamp(tree.axeBias, -2.8, 2.8);
 
     if (validHit) {
+      experience.sound("chop");
+      state.toolSwing = .28;
       axe.flash = 0.24;
       axe.lastChopAt = state.elapsed;
       spawnWoodChips(impactX, impactY, side, 0.6 + trunkPower);
@@ -2131,14 +2133,15 @@
     branch.cut = true;
     tree.cutCount += 1;
     state.totalCut += 1;
+    experience.sound("sever");
     state.selectedTreeId = tree.id;
-    if (state.elapsed - state.lastCutAt <= 1.45) {
+    if (state.elapsed - state.lastCutAt <= 3.5) {
       state.flowStreak += 1;
     } else {
       state.flowStreak = 1;
     }
     state.lastCutAt = state.elapsed;
-    state.flowTimer = 1.45;
+    state.flowTimer = 3.5;
     state.bestFlow = Math.max(state.bestFlow, state.flowStreak);
     if (state.flowStreak === 3) {
       addCallout("Smooth sequence x3", "#d8f8c4", 1.6);
@@ -2147,6 +2150,7 @@
     } else if (state.flowStreak === 7) {
       addCallout("Unreal flow x7", "#ffd09e", 2);
     }
+    addScore(75 * Math.min(4, 1 + Math.floor(state.flowStreak / 3)), seg.x2, seg.y2 - 22);
     const impactX = (seg.x1 + seg.x2) * 0.5;
     const impactY = (seg.y1 + seg.y2) * 0.5;
     spawnWoodChips(impactX, impactY, branch.side);
@@ -2154,7 +2158,7 @@
     addTrauma(branch.isBig ? 0.08 : 0.05);
 
     const imbalance = computeTreeImbalance(tree);
-    if (!tree.falling && Math.abs(imbalance) > autoFallThreshold(tree)) {
+    if (!tree.falling && !tree.axe.targetSide && Math.abs(imbalance) > autoFallThreshold(tree)) {
       startFalling(tree, imbalance);
     }
 
@@ -2366,46 +2370,26 @@
   }
 
   function settleTreeImpact(tree) {
+    experience.sound('land');
+    addTrauma(.28);
+    spawnWoodChips(tree.x + Math.sin(tree.angle) * tree.height * .5, WORLD.groundY - 3, -Math.sign(tree.angle), 2.3);
     let collisions = 0;
     let oldLadyHits = 0;
     for (const hazard of state.hazards) {
-      if (hazard.damaged) {
-        continue;
-      }
-      if (trunkHitsHazard(tree, hazard)) {
-        hazard.damaged = true;
-        state.totalDamaged += 1;
-        collisions += 1;
-        if (hazard.type === "oldlady") {
-          oldLadyHits += 1;
-        }
-        spawnCrashBurst(hazard, tree, hazard.type === "oldlady");
+      if (hazard.damaged) continue;
+      if (directionHitsHazards(tree, [hazard], tree.fallDirection || Math.sign(tree.angle))) {
+        hazard.damaged = true; state.totalDamaged += 1; collisions++;
+        if (hazard.type === 'oldlady') oldLadyHits++;
+        spawnCrashBurst(hazard, tree, hazard.type === 'oldlady');
       }
     }
-    if (collisions > 0) {
+    if (collisions) {
       state.trunkCrashesThisLevel += collisions;
-      addTrauma(0.62 + collisions * 0.15 + oldLadyHits * 0.22);
-      if (oldLadyHits > 0) {
-        addCallout(
-          oldLadyHits > 1 ? `Old ladies hit x${oldLadyHits}` : "Old lady hit!",
-          "#ff9ca8",
-          2.3
-        );
-        triggerImmediateFailure(
-          "oldlady",
-          oldLadyHits > 1
-            ? `${oldLadyHits} old ladies were struck by falling trunks.`
-            : "An old lady was struck by a falling trunk."
-        );
-        return;
-      }
-      addCallout(
-        collisions > 1 ? `CRASH CHAIN x${collisions}` : "CRASH IMPACT",
-        "#ffb0a4",
-        1.8
-      );
-    } else if (tree.isBoss) {
-      addCallout("Boss trunk landed clean", "#c7f7bf", 1.8);
+      addTrauma(.6);
+      triggerImmediateFailure(oldLadyHits ? 'oldlady' : 'crash', oldLadyHits ? 'A neighbor was in the fall path.' : 'A protected home or car was hit.');
+    } else {
+      addScore(tree.isBoss ? 800 : 300, clamp(tree.x + Math.sign(tree.angle) * tree.height * .5, 80, 1200), WORLD.groundY - 60, tree.isBoss ? '+800 · GIANT DOWN' : '+300 · CLEAN LANDING');
+      addCallout(tree.isBoss ? 'The old king, gracefully retired. +800' : 'Beautiful landing. +300', '#e9eebd', 1.8);
     }
   }
 
@@ -2449,59 +2433,31 @@
       failureMessage: message,
     };
     state.mode = "gameover";
+    experience.sound("fail");
   }
 
   function evaluateLevelResult() {
-    const damaged = state.hazards.filter((h) => h.damaged);
-    const saved = state.hazards.length - damaged.length;
-    const oldLady = getOldLadyCounts();
-    const trunkCrashPenalty = state.trunkCrashesThisLevel > 0 ? 100 : 0;
-    const penalty = trunkCrashPenalty;
-    const flowBonus =
-      state.trunkCrashesThisLevel === 0 ? clamp(Math.floor(state.bestFlow * 1.5), 0, 12) : 0;
-
+    if (state.mode !== 'playing') return;
+    const damaged = state.hazards.filter(h => h.damaged).length;
+    const saved = state.hazards.length - damaged;
+    if (damaged) { triggerImmediateFailure('crash', 'A protected target was hit.'); return; }
+    const job = JOBS[state.level - 1];
+    const cuts = state.totalCut - state.jobStartCut;
+    const timeBonus = Math.max(0, Math.round((job.par - state.jobTime) * 8));
+    const stars = 1 + Number(state.jobTime <= job.par) + Number(cuts >= 2);
+    state.score += saved * 150 + timeBonus;
     state.totalSaved += saved;
-    state.reputation = clamp(state.reputation - penalty + flowBonus, 0, 100);
-
+    const oldLady = getOldLadyCounts();
     state.levelReport = {
-      district: state.district ? state.district.name : "Unknown",
-      saved,
-      damaged: damaged.length,
-      trunkCrashes: state.trunkCrashesThisLevel,
-      penalty,
-      flowBonus,
-      bestFlow: state.bestFlow,
-      styleRank: getStyleRank(state.bestFlow, state.trunkCrashesThisLevel),
-      reputation: state.reputation,
-      oldLadiesSaved: oldLady.saved,
-      oldLadiesHit: oldLady.hit,
-      failureReason: "",
-      failureMessage: "",
+      district: job.short, saved, damaged, trunkCrashes: 0, penalty: 0, flowBonus: timeBonus,
+      bestFlow: state.bestFlow, styleRank: stars === 3 ? 'Master arborist' : stars === 2 ? 'Fine work' : 'Job done',
+      reputation: 100, oldLadiesSaved: oldLady.saved, oldLadiesHit: 0, failureReason: '', failureMessage: '',
+      stars, seconds: Math.round(state.jobTime * 10) / 10, cuts, timeBonus, jobScore: state.score - state.jobStartScore,
     };
-
-    if (state.trunkCrashesThisLevel > 0) {
-      state.failReason = "crash";
-      state.levelReport.failureReason = "crash";
-      state.levelReport.failureMessage = "A protected target was crushed.";
-      state.mode = "gameover";
-      return;
-    }
-
-    if (state.reputation <= 0) {
-      state.failReason = "reputation";
-      state.levelReport.failureReason = "reputation";
-      state.levelReport.failureMessage = "Reputation collapsed under pressure.";
-      state.mode = "gameover";
-      return;
-    }
-
-    state.failReason = "";
-    if (state.level >= MAX_LEVEL) {
-      state.mode = "victory";
-      return;
-    }
-
-    state.mode = "levelComplete";
+    experience.complete(state.level, stars, state.levelReport.jobScore);
+    experience.sound('complete');
+    state.mode = state.level === MAX_LEVEL ? 'victory' : 'levelComplete';
+    if (state.mode === 'victory') toggleNickShowtime(true);
   }
 
   function updateTrees(dt) {
@@ -2522,34 +2478,25 @@
         const swayTarget = tree.lean * 0.6 + state.wind * 0.035 + imbalance * 0.045;
         tree.sway = lerp(tree.sway, swayTarget, clamp(dt * 2.7, 0, 1));
 
-        const canAutoFall =
-          tree.cutCount > 0 ||
-          Math.abs(tree.wedge) > 0 ||
-          tree.deadness > 0.58 ||
-          Math.abs(tree.axeBias || 0) > 0.2;
+        const canAutoFall = !tree.axe.targetSide && (tree.cutCount > 0 || Math.abs(tree.wedge) > 0);
         if (canAutoFall && Math.abs(imbalance) > autoFallThreshold(tree)) {
           startFalling(tree, imbalance);
         }
       }
 
       if (tree.falling) {
-        const gravityPush = Math.sin(tree.angle + Math.sign(tree.angularVelocity || 1) * 0.08);
-        const sizeMomentum = 0.75 + tree.height / 250 + tree.radius / 18;
-        tree.angularVelocity +=
-          ((gravityPush * (1.15 + tree.height / 280) + imbalance * 0.85) *
-            dt *
-            sizeMomentum) /
-          2.1;
-        tree.angularVelocity *= Math.pow(0.992, dt * 60);
-
-        const angularGain = 1.45 + tree.height / 390;
-        tree.angle += tree.angularVelocity * dt * angularGain;
+        const direction = tree.fallDirection || Math.sign(tree.angularVelocity) || 1;
+        const fallProgress = Math.max(.04, direction * tree.angle);
+        const gravityPush = Math.sin(fallProgress + .1);
+        tree.angularVelocity += direction * (gravityPush * 1.45 + .28 + Math.max(0, direction * imbalance) * .22) * dt;
+        tree.angle += tree.angularVelocity * dt * 1.45;
 
         if (Math.abs(tree.angle) >= Math.PI / 2) {
           tree.angle = Math.sign(tree.angle) * (Math.PI / 2);
           tree.falling = false;
           tree.fallen = true;
           settleTreeImpact(tree);
+          if (state.mode !== "playing") return;
           if (tree.id === state.selectedTreeId) {
             cycleSelectedTree(1);
           }
@@ -2593,6 +2540,7 @@
       return false;
     }
     state.nickVy = -NICK_JUMP_VELOCITY;
+    experience.sound("jump");
     state.nickY = -1;
     return true;
   }
@@ -2720,6 +2668,12 @@
   }
 
   function update(dt) {
+    if (state.paused || state.overlay) return;
+    state.visualTime += dt;
+    state.toolSwing = Math.max(0, state.toolSwing - dt);
+    for (const floater of state.floaters) { floater.life -= dt; floater.y -= dt * 24; }
+    state.floaters = state.floaters.filter(f => f.life > 0);
+    if (state.mode === 'menu') return;
     updateSlashEchoes(dt);
     updateChips(dt);
     updateCrashBursts(dt);
@@ -2745,6 +2699,7 @@
     }
 
     state.elapsed += dt;
+    state.jobTime += dt;
     state.flowTimer -= dt;
     if (state.flowTimer <= 0) {
       state.flowStreak = 0;
@@ -2754,189 +2709,6 @@
 
     updateTrees(dt);
     updateNick(dt);
-  }
-
-  function drawPanel(x, y, w, h, opts = {}) {
-    const top = opts.top || "rgba(24, 40, 44, 0.82)";
-    const bottom = opts.bottom || "rgba(13, 25, 29, 0.7)";
-    const radius = opts.radius ?? 14;
-    const border = opts.border || "rgba(255, 255, 255, 0.16)";
-
-    const g = ctx.createLinearGradient(x, y, x, y + h);
-    g.addColorStop(0, top);
-    g.addColorStop(1, bottom);
-    ctx.fillStyle = g;
-    ctx.beginPath();
-    ctx.roundRect(x, y, w, h, radius);
-    ctx.fill();
-
-    ctx.strokeStyle = border;
-    ctx.lineWidth = 1.2;
-    ctx.beginPath();
-    ctx.roundRect(x + 0.5, y + 0.5, w - 1, h - 1, radius);
-    ctx.stroke();
-  }
-
-  function drawMeter(x, y, w, h, value, colorA, colorB, label, valueLabel) {
-    const pct = clamp(value, 0, 1);
-    ctx.fillStyle = "rgba(6, 11, 14, 0.5)";
-    ctx.beginPath();
-    ctx.roundRect(x, y, w, h, 8);
-    ctx.fill();
-
-    const gw = Math.max(5, (w - 4) * pct);
-    const g = ctx.createLinearGradient(x, y, x + w, y);
-    g.addColorStop(0, colorA);
-    g.addColorStop(1, colorB);
-    ctx.fillStyle = g;
-    ctx.beginPath();
-    ctx.roundRect(x + 2, y + 2, gw, h - 4, 6);
-    ctx.fill();
-
-    ctx.strokeStyle = "rgba(255, 255, 255, 0.18)";
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.roundRect(x, y, w, h, 8);
-    ctx.stroke();
-
-    ctx.fillStyle = "#f2f8f6";
-    ctx.font = "600 13px Avenir Next, Trebuchet MS, sans-serif";
-    ctx.fillText(label, x, y - 4);
-    ctx.font = "700 12px Avenir Next, Trebuchet MS, sans-serif";
-    ctx.fillText(valueLabel, x + w - ctx.measureText(valueLabel).width, y - 4);
-  }
-
-  function drawBackground() {
-    const skyPreset = state.skyPreset || SKY_PRESETS.sunrise;
-    const district = state.district || DISTRICTS[0];
-    const sky = ctx.createLinearGradient(0, 0, 0, WORLD.groundY);
-    sky.addColorStop(0, skyPreset.top);
-    sky.addColorStop(0.62, skyPreset.mid);
-    sky.addColorStop(1, skyPreset.bottom);
-    ctx.fillStyle = sky;
-    ctx.fillRect(0, 0, WORLD.width, WORLD.height);
-
-    const sunX = 170 + Math.sin(state.elapsed * 0.06) * 10;
-    const sunY = 128;
-    const sunGlow = ctx.createRadialGradient(sunX, sunY, 10, sunX, sunY, 160);
-    sunGlow.addColorStop(0, "rgba(255, 236, 178, 0.7)");
-    sunGlow.addColorStop(1, "rgba(255, 236, 178, 0)");
-    ctx.fillStyle = sunGlow;
-    ctx.fillRect(0, 0, WORLD.width, WORLD.groundY);
-
-    ctx.fillStyle = skyPreset.sun;
-    ctx.beginPath();
-    ctx.arc(sunX, sunY, 64, 0, Math.PI * 2);
-    ctx.fill();
-
-    const farMountain = ctx.createLinearGradient(0, WORLD.groundY - 240, 0, WORLD.groundY - 80);
-    farMountain.addColorStop(0, "rgba(66, 98, 115, 0.32)");
-    farMountain.addColorStop(1, "rgba(88, 124, 140, 0.2)");
-    ctx.fillStyle = farMountain;
-    ctx.beginPath();
-    ctx.moveTo(0, WORLD.groundY - 86);
-    ctx.quadraticCurveTo(WORLD.width * 0.18, WORLD.groundY - 210, WORLD.width * 0.36, WORLD.groundY - 102);
-    ctx.quadraticCurveTo(WORLD.width * 0.55, WORLD.groundY - 240, WORLD.width * 0.78, WORLD.groundY - 112);
-    ctx.quadraticCurveTo(WORLD.width * 0.88, WORLD.groundY - 180, WORLD.width, WORLD.groundY - 98);
-    ctx.lineTo(WORLD.width, WORLD.groundY);
-    ctx.lineTo(0, WORLD.groundY);
-    ctx.closePath();
-    ctx.fill();
-
-    ctx.fillStyle = skyPreset.cloud;
-    for (let i = 0; i < 6; i += 1) {
-      const x = 130 + i * 210 + Math.sin(state.elapsed * 0.11 + i * 1.4) * 30;
-      const y = 96 + (i % 3) * 34;
-      ctx.globalAlpha = 0.78 - (i % 2) * 0.16;
-      ctx.beginPath();
-      ctx.ellipse(x, y, 56, 22, 0, 0, Math.PI * 2);
-      ctx.ellipse(x + 30, y + 7, 43, 17, 0, 0, Math.PI * 2);
-      ctx.ellipse(x - 32, y + 9, 36, 14, 0, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    ctx.globalAlpha = 1;
-
-    const hill = ctx.createLinearGradient(0, WORLD.groundY - 120, 0, WORLD.groundY + 12);
-    hill.addColorStop(0, district.hillTop);
-    hill.addColorStop(1, district.hillBottom);
-    ctx.fillStyle = hill;
-    ctx.beginPath();
-    ctx.moveTo(0, WORLD.groundY + 8);
-    ctx.quadraticCurveTo(WORLD.width * 0.2, WORLD.groundY - 78, WORLD.width * 0.46, WORLD.groundY + 3);
-    ctx.quadraticCurveTo(WORLD.width * 0.7, WORLD.groundY - 108, WORLD.width, WORLD.groundY + 5);
-    ctx.lineTo(WORLD.width, WORLD.height);
-    ctx.lineTo(0, WORLD.height);
-    ctx.closePath();
-    ctx.fill();
-
-    const grass = ctx.createLinearGradient(0, WORLD.groundY, 0, WORLD.height);
-    grass.addColorStop(0, district.grassTop);
-    grass.addColorStop(1, district.grassBottom);
-    ctx.fillStyle = grass;
-    ctx.fillRect(0, WORLD.groundY, WORLD.width, WORLD.height - WORLD.groundY);
-
-    ctx.fillStyle = district.road;
-    ctx.beginPath();
-    ctx.moveTo(0, WORLD.groundY + 24);
-    ctx.bezierCurveTo(
-      WORLD.width * 0.2,
-      WORLD.groundY + 2,
-      WORLD.width * 0.42,
-      WORLD.groundY + 36,
-      WORLD.width * 0.58,
-      WORLD.groundY + 18
-    );
-    ctx.bezierCurveTo(
-      WORLD.width * 0.76,
-      WORLD.groundY + 4,
-      WORLD.width * 0.9,
-      WORLD.groundY + 28,
-      WORLD.width,
-      WORLD.groundY + 20
-    );
-    ctx.lineTo(WORLD.width, WORLD.groundY + 55);
-    ctx.lineTo(0, WORLD.groundY + 60);
-    ctx.closePath();
-    ctx.fill();
-
-    ctx.strokeStyle = district.roadEdge;
-    ctx.setLineDash([16, 12]);
-    ctx.lineWidth = 4;
-    ctx.beginPath();
-    ctx.moveTo(0, WORLD.groundY + 29);
-    ctx.bezierCurveTo(
-      WORLD.width * 0.24,
-      WORLD.groundY + 14,
-      WORLD.width * 0.52,
-      WORLD.groundY + 34,
-      WORLD.width,
-      WORLD.groundY + 23
-    );
-    ctx.stroke();
-    ctx.setLineDash([]);
-
-    ctx.strokeStyle = "rgba(60, 90, 40, 0.2)";
-    ctx.lineWidth = 2;
-    for (let x = 0; x < WORLD.width; x += 30) {
-      ctx.beginPath();
-      ctx.moveTo(x, WORLD.groundY);
-      ctx.lineTo(x + 10, WORLD.height);
-      ctx.stroke();
-    }
-
-    ctx.strokeStyle = district.fence;
-    ctx.lineWidth = 2;
-    for (let x = 18; x < WORLD.width; x += 44) {
-      const postY = WORLD.groundY - 8 + Math.sin(x * 0.02) * 3;
-      ctx.beginPath();
-      ctx.moveTo(x, postY);
-      ctx.lineTo(x, postY + 18);
-      ctx.stroke();
-    }
-    ctx.beginPath();
-    ctx.moveTo(0, WORLD.groundY + 2);
-    ctx.lineTo(WORLD.width, WORLD.groundY + 4);
-    ctx.stroke();
   }
 
   function drawWindTrails() {
@@ -3195,264 +2967,6 @@
     }
   }
 
-  function drawTree(tree) {
-    const species = tree.species || TREE_SPECIES[0];
-    const trunkUnit = getTrunkUnit(tree);
-    const perp = getPerpUnit(tree);
-    const topX = tree.x + trunkUnit.x * tree.height;
-    const topY = tree.baseY + trunkUnit.y * tree.height;
-    const curveAmount = tree.trunkCurve * tree.height * 0.18;
-    const midX = tree.x + trunkUnit.x * tree.height * 0.52 + perp.x * curveAmount;
-    const midY = tree.baseY + trunkUnit.y * tree.height * 0.52 + perp.y * curveAmount;
-    const selected = tree.id === state.selectedTreeId && state.mode === "playing";
-
-    const leanAbs = Math.abs(getTreeDisplayAngle(tree));
-    const shadowLen = tree.height * (0.16 + leanAbs * 0.46);
-    const shadowDir = Math.sign(getTreeDisplayAngle(tree)) || Math.sign(state.wind) || 1;
-    ctx.fillStyle = "rgba(12, 16, 10, 0.2)";
-    ctx.beginPath();
-    ctx.ellipse(
-      tree.x + shadowDir * shadowLen * 0.5,
-      tree.baseY + 7,
-      tree.radius * 0.95 + shadowLen * 0.55,
-      9 + tree.radius * 0.08,
-      0,
-      0,
-      Math.PI * 2
-    );
-    ctx.fill();
-
-    if (tree.isBoss && !tree.fallen) {
-      const auraPulse = 0.12 + (Math.sin(state.elapsed * 4.2) * 0.04 + 0.04);
-      ctx.fillStyle = `rgba(255, 198, 116, ${auraPulse})`;
-      ctx.beginPath();
-      ctx.ellipse(tree.x, tree.baseY - tree.height * 0.56, tree.radius * 2.8, tree.height * 0.5, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.strokeStyle = "rgba(255, 210, 138, 0.68)";
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      ctx.arc(tree.x, tree.baseY, tree.radius + 16, 0, Math.PI * 2);
-      ctx.stroke();
-    }
-
-    if (selected && !tree.fallen && !tree.falling) {
-      const projected = getProjectedFall(tree);
-      const angle = projected.direction * (Math.PI / 2) * (0.28 + projected.certainty * 0.66);
-      const tipX = tree.x + Math.sin(angle) * tree.height;
-      const tipY = tree.baseY - Math.cos(angle) * tree.height;
-      const safeSide = tree.safeDirectionHint;
-      const safe =
-        (safeSide === 0 && (!tree.safeDirections || tree.safeDirections.length > 1)) ||
-        safeSide === projected.direction;
-      ctx.strokeStyle = safe ? "rgba(171, 242, 155, 0.55)" : "rgba(248, 170, 132, 0.58)";
-      ctx.lineWidth = 6;
-      ctx.setLineDash([11, 9]);
-      ctx.beginPath();
-      ctx.moveTo(tree.x, tree.baseY);
-      ctx.lineTo(tipX, tipY);
-      ctx.stroke();
-      ctx.setLineDash([]);
-    }
-
-    if (selected && !tree.fallen) {
-      const pulse = 1 + Math.sin(state.elapsed * 6) * 0.08;
-      ctx.strokeStyle = "rgba(255, 240, 150, 0.85)";
-      ctx.lineWidth = 4.6;
-      ctx.beginPath();
-      ctx.arc(tree.x, tree.baseY, (tree.radius + 12) * pulse, 0, Math.PI * 2);
-      ctx.stroke();
-    }
-
-    ctx.strokeStyle = species.trunkColor;
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
-    ctx.lineWidth = tree.radius * 2;
-    ctx.beginPath();
-    ctx.moveTo(tree.x, tree.baseY);
-    ctx.quadraticCurveTo(midX, midY, topX, topY);
-    ctx.stroke();
-
-    ctx.strokeStyle = species.trunkHighlight;
-    ctx.lineWidth = tree.radius * 1.2;
-    ctx.beginPath();
-    ctx.moveTo(tree.x, tree.baseY);
-    ctx.quadraticCurveTo(midX, midY, topX, topY);
-    ctx.stroke();
-
-    ctx.strokeStyle = "rgba(42, 27, 16, 0.26)";
-    ctx.lineWidth = Math.max(1, tree.radius * 0.14);
-    const barkCount = clamp(Math.round(tree.height / 36), 5, 14);
-    for (let i = 0; i < barkCount; i += 1) {
-      const t = (i + 0.7) / (barkCount + 1);
-      const bx = tree.x + trunkUnit.x * tree.height * t + perp.x * Math.sin(i * 2.1) * tree.radius * 0.24;
-      const by = tree.baseY + trunkUnit.y * tree.height * t + perp.y * Math.sin(i * 2.1) * tree.radius * 0.24;
-      ctx.beginPath();
-      ctx.moveTo(bx - perp.x * tree.radius * 0.36, by - perp.y * tree.radius * 0.36);
-      ctx.lineTo(bx + perp.x * tree.radius * 0.36, by + perp.y * tree.radius * 0.36);
-      ctx.stroke();
-    }
-
-    const deadPatchCount = Math.ceil(tree.deadness * 5);
-    ctx.strokeStyle = "rgba(45, 34, 24, 0.52)";
-    ctx.lineWidth = Math.max(3, tree.radius * 0.35);
-    for (let i = 0; i < deadPatchCount; i += 1) {
-      const t = (i + 1) / (deadPatchCount + 1);
-      const px = tree.x + trunkUnit.x * tree.height * t;
-      const py = tree.baseY + trunkUnit.y * tree.height * t;
-      const spread = tree.radius * (0.35 + (i % 2) * 0.35);
-      ctx.beginPath();
-      ctx.moveTo(px - spread, py - spread * 0.2);
-      ctx.lineTo(px + spread, py + spread * 0.2);
-      ctx.stroke();
-    }
-
-    if (!tree.fallen && tree.axe && tree.axe.targetSide !== 0) {
-      const axe = tree.axe;
-      const notchPct = clamp(axe.notchHits / Math.max(1, axe.notchNeed), 0, 1);
-      const backPct = clamp(axe.backHits / Math.max(1, axe.backNeed), 0, 1);
-      const flash = clamp((axe.flash || 0) * 4, 0, 1);
-      const cutBaseDist = Math.max(12, tree.radius * 0.85);
-      const cutBaseX = tree.x + trunkUnit.x * cutBaseDist;
-      const cutBaseY = tree.baseY + trunkUnit.y * cutBaseDist;
-
-      const notchCenterX =
-        cutBaseX + perp.x * axe.targetSide * tree.radius * 0.58;
-      const notchCenterY =
-        cutBaseY + perp.y * axe.targetSide * tree.radius * 0.58;
-      const notchDepth = tree.radius * (0.2 + notchPct * 0.72);
-      const notchHalf = tree.radius * (0.26 + notchPct * 0.3);
-      const tipX = notchCenterX + perp.x * axe.targetSide * notchDepth;
-      const tipY = notchCenterY + perp.y * axe.targetSide * notchDepth;
-      const shoulderAX = notchCenterX + trunkUnit.x * notchHalf;
-      const shoulderAY = notchCenterY + trunkUnit.y * notchHalf;
-      const shoulderBX = notchCenterX - trunkUnit.x * notchHalf;
-      const shoulderBY = notchCenterY - trunkUnit.y * notchHalf;
-
-      ctx.fillStyle = `rgba(248, 208, 150, ${0.3 + notchPct * 0.45 + flash * 0.18})`;
-      ctx.beginPath();
-      ctx.moveTo(tipX, tipY);
-      ctx.lineTo(shoulderAX, shoulderAY);
-      ctx.lineTo(shoulderBX, shoulderBY);
-      ctx.closePath();
-      ctx.fill();
-
-      const backCenterX =
-        cutBaseX - perp.x * axe.targetSide * tree.radius * 0.5;
-      const backCenterY =
-        cutBaseY - perp.y * axe.targetSide * tree.radius * 0.5;
-      const backSpan = tree.radius * (0.28 + backPct * 1.24);
-      ctx.strokeStyle = `rgba(255, 228, 188, ${0.18 + backPct * 0.7 + flash * 0.2})`;
-      ctx.lineWidth = Math.max(2, tree.radius * (0.12 + backPct * 0.14));
-      ctx.beginPath();
-      ctx.moveTo(
-        backCenterX - trunkUnit.x * backSpan,
-        backCenterY - trunkUnit.y * backSpan
-      );
-      ctx.lineTo(
-        backCenterX + trunkUnit.x * backSpan,
-        backCenterY + trunkUnit.y * backSpan
-      );
-      ctx.stroke();
-    }
-
-    for (const branch of tree.branches) {
-      const seg = getBranchSegment(tree, branch);
-      if (!branch.cut) {
-        const damageRatio = getBranchDamageRatio(branch);
-        const woodShade = Math.floor(105 - branch.deadness * 34);
-        const warm = Math.floor(136 + damageRatio * 90);
-        ctx.strokeStyle =
-          damageRatio > 0.02
-            ? `rgb(${Math.min(255, warm)}, ${80 - branch.deadness * 10}, 36)`
-            : `rgb(${woodShade}, ${66 - branch.deadness * 11}, 34)`;
-        ctx.lineWidth = branch.thickness * (1 - damageRatio * 0.14);
-        ctx.beginPath();
-        ctx.moveTo(seg.x1, seg.y1);
-        ctx.lineTo(seg.x2, seg.y2);
-        ctx.stroke();
-
-        if (damageRatio > 0.02) {
-          const notchT = 0.18 + damageRatio * 0.18;
-          const nx = lerp(seg.x1, seg.x2, notchT);
-          const ny = lerp(seg.y1, seg.y2, notchT);
-          const flash = clamp((branch.hitFlash || 0) * 4.2, 0, 1);
-          ctx.strokeStyle = `rgba(255, 225, 182, ${0.28 + damageRatio * 0.5 + flash * 0.3})`;
-          ctx.lineWidth = Math.max(1.6, branch.thickness * (0.22 + damageRatio * 0.22));
-          ctx.beginPath();
-          ctx.moveTo(nx - perp.x * branch.side * branch.thickness * 0.35, ny - perp.y * branch.side * branch.thickness * 0.35);
-          ctx.lineTo(nx + perp.x * branch.side * branch.thickness * 0.35, ny + perp.y * branch.side * branch.thickness * 0.35);
-          ctx.stroke();
-        }
-
-        ctx.fillStyle = branch.deadness > 0.45 ? "#5d6a4e" : species.leafColor;
-        ctx.beginPath();
-        ctx.arc(
-          seg.x2,
-          seg.y2,
-          7 + branch.deadness * 4 + (branch.isBig ? 3 : 0) + (branch.tier === "high" ? 1 : 0),
-          0,
-          Math.PI * 2
-        );
-        ctx.fill();
-
-        ctx.fillStyle = branch.deadness > 0.45 ? "#6d7b5a" : species.leafAlt;
-        ctx.beginPath();
-        ctx.arc(
-          seg.x2 + perp.x * branch.side * 7,
-          seg.y2 + perp.y * branch.side * 7 - 2,
-          4 + (branch.isBig ? 2 : 0),
-          0,
-          Math.PI * 2
-        );
-        ctx.arc(
-          seg.x2 - perp.x * branch.side * 5,
-          seg.y2 - perp.y * branch.side * 5 + 1,
-          3.5 + (branch.tier === "high" ? 1.5 : 0),
-          0,
-          Math.PI * 2
-        );
-        ctx.fill();
-      }
-    }
-
-    if (!tree.fallen) {
-      ctx.fillStyle = tree.deadness > 0.45 ? "rgba(74, 96, 62, 0.42)" : "rgba(62, 121, 56, 0.36)";
-      ctx.beginPath();
-      ctx.ellipse(
-        topX + perp.x * tree.radius * 0.8,
-        topY + perp.y * tree.radius * 0.8,
-        tree.radius * 2.4,
-        tree.radius * 1.5,
-        getTreeDisplayAngle(tree),
-        0,
-        Math.PI * 2
-      );
-      ctx.ellipse(
-        topX - perp.x * tree.radius * 0.7,
-        topY - perp.y * tree.radius * 0.4,
-        tree.radius * 2,
-        tree.radius * 1.25,
-        getTreeDisplayAngle(tree),
-        0,
-        Math.PI * 2
-      );
-      ctx.fill();
-    }
-
-    if (!tree.fallen) {
-      const wedgeY = tree.baseY - 8;
-      if (tree.wedge !== 0) {
-        ctx.fillStyle = tree.wedge > 0 ? "#f05f4f" : "#4f7de8";
-        ctx.beginPath();
-        ctx.moveTo(tree.x, wedgeY);
-        ctx.lineTo(tree.x + tree.wedge * 28, wedgeY - 12);
-        ctx.lineTo(tree.x + tree.wedge * 28, wedgeY + 12);
-        ctx.closePath();
-        ctx.fill();
-      }
-    }
-  }
-
   function drawBirds() {
     for (const bird of state.birds) {
       const flap = Math.sin(state.elapsed * 20 + bird.wingPhase);
@@ -3526,166 +3040,6 @@
     ctx.fillStyle = red > 0 ? "#ffdbdb" : "#f7d1b4";
     ctx.beginPath();
     ctx.arc(13, 0, 1.3, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.restore();
-  }
-
-  function drawNick() {
-    const x = state.nickX;
-    const danceOffset = state.showtime.sway || 0;
-    const y = WORLD.groundY + state.nickY + danceOffset;
-    const jumpT = clamp(-state.nickY / 150, 0, 1);
-    const pointerSwing = state.pointer.down ? Math.sin(performance.now() * 0.03) * 6 : 0;
-    const armOffset = pointerSwing + (state.showtime.armSwing || 0);
-    const danceTilt = state.showtime.active
-      ? Math.sin(state.showtime.phase * 2.4) * 0.065
-      : 0;
-    const bowSweep = state.showtime.active
-      ? Math.sin(state.showtime.phase * 8.6) * 8
-      : 0;
-
-    ctx.save();
-    ctx.translate(x, WORLD.groundY);
-    ctx.fillStyle = `rgba(12, 16, 12, ${0.24 - jumpT * 0.12})`;
-    ctx.beginPath();
-    ctx.ellipse(0, 5, 28 - jumpT * 8, 9 - jumpT * 3, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-
-    ctx.save();
-    ctx.translate(x, y);
-    if (Math.abs(danceTilt) > 0.001) {
-      ctx.rotate(danceTilt);
-    }
-
-    ctx.fillStyle = "#2f3d68";
-    ctx.beginPath();
-    ctx.roundRect(-20, -60, 40, 44, 7);
-    ctx.fill();
-
-    ctx.fillStyle = "#4d315f";
-    ctx.beginPath();
-    ctx.roundRect(-16, -16, 12, 18, 3);
-    ctx.roundRect(4, -16, 12, 18, 3);
-    ctx.fill();
-
-    ctx.fillStyle = "#f2d2ac";
-    ctx.beginPath();
-    ctx.arc(0, -72, 15, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.fillStyle = "#121212";
-    ctx.beginPath();
-    ctx.moveTo(-10, -70);
-    ctx.quadraticCurveTo(0, -48, 10, -70);
-    ctx.quadraticCurveTo(0, -58, -10, -70);
-    ctx.fill();
-
-    ctx.fillStyle = "#111";
-    ctx.fillRect(-7, -77, 14, 3);
-
-    ctx.strokeStyle = "#f2d2ac";
-    ctx.lineWidth = 6;
-    ctx.beginPath();
-    ctx.moveTo(-11, -47);
-    ctx.lineTo(-29, -38 + armOffset * 0.6);
-    ctx.moveTo(12, -46);
-    ctx.lineTo(30, -34 - armOffset);
-    ctx.stroke();
-
-    ctx.fillStyle = "#2b2a26";
-    ctx.beginPath();
-    ctx.roundRect(-17, -88, 34, 12, 3);
-    ctx.fill();
-    ctx.fillStyle = "#f3c44e";
-    ctx.fillRect(-13, -84, 26, 4);
-
-    // Fiddle in left hand
-    ctx.fillStyle = "#6f3b1f";
-    ctx.beginPath();
-    ctx.ellipse(-33, -38 + armOffset * 0.45, 8, 10, 0, 0, Math.PI * 2);
-    ctx.ellipse(-33, -55 + armOffset * 0.45, 8, 10, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = "#4f2a16";
-    ctx.fillRect(-36, -50 + armOffset * 0.45, 6, 8);
-    ctx.strokeStyle = "#deb17d";
-    ctx.lineWidth = 1.1;
-    for (let i = 0; i < 3; i += 1) {
-      const sx = -37 + i * 2.3;
-      ctx.beginPath();
-      ctx.moveTo(sx, -63 + armOffset * 0.45);
-      ctx.lineTo(sx, -30 + armOffset * 0.45);
-      ctx.stroke();
-    }
-    ctx.strokeStyle = "#d7c09f";
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(-45, -30 + armOffset * 0.2 + bowSweep * 0.42);
-    ctx.lineTo(-18, -61 + armOffset * 0.2 - bowSweep * 0.58);
-    ctx.stroke();
-
-    if (state.controlMode === "axe") {
-      // Axe in right hand
-      const handX = 30;
-      const handY = -35 - armOffset * 0.35;
-      ctx.save();
-      ctx.translate(handX, handY);
-      ctx.rotate(-0.62 + armOffset * 0.015);
-
-      ctx.fillStyle = "#835936";
-      ctx.beginPath();
-      ctx.roundRect(-2.4, -3, 4.8, 30, 2);
-      ctx.fill();
-
-      ctx.fillStyle = "#ccd4dc";
-      ctx.beginPath();
-      ctx.moveTo(-2, -2);
-      ctx.lineTo(14, -6);
-      ctx.lineTo(19, 0);
-      ctx.lineTo(10, 8);
-      ctx.lineTo(2, 7);
-      ctx.closePath();
-      ctx.fill();
-
-      ctx.fillStyle = "#9fa8b0";
-      ctx.beginPath();
-      ctx.moveTo(0, 0);
-      ctx.lineTo(11, -3);
-      ctx.lineTo(14, 0.8);
-      ctx.lineTo(8, 5.5);
-      ctx.lineTo(0, 4.8);
-      ctx.closePath();
-      ctx.fill();
-      ctx.restore();
-    } else {
-      // Chainsaw in right hand
-      ctx.fillStyle = "#c74a2f";
-      ctx.beginPath();
-      ctx.roundRect(24, -43 - armOffset * 0.35, 22, 12, 4);
-      ctx.fill();
-      ctx.fillStyle = "#f2c15d";
-      ctx.fillRect(30, -46 - armOffset * 0.35, 8, 4);
-      ctx.fillStyle = "#2d2a2a";
-      ctx.fillRect(34, -38 - armOffset * 0.35, 5, 5);
-      ctx.fillStyle = "#c6d0d8";
-      ctx.beginPath();
-      ctx.roundRect(45, -40 - armOffset * 0.35, 18, 6, 2);
-      ctx.fill();
-      ctx.strokeStyle = "#8a939c";
-      ctx.lineWidth = 1;
-      for (let i = 0; i < 4; i += 1) {
-        ctx.beginPath();
-        ctx.moveTo(48 + i * 4, -40 - armOffset * 0.35);
-        ctx.lineTo(48 + i * 4, -34 - armOffset * 0.35);
-        ctx.stroke();
-      }
-    }
-
-    ctx.fillStyle = "#f2d2ac";
-    ctx.beginPath();
-    ctx.arc(30, -35 - armOffset * 0.35, 3, 0, Math.PI * 2);
-    ctx.closePath();
     ctx.fill();
 
     ctx.restore();
@@ -3835,530 +3189,28 @@
     }
   }
 
-  function drawHud() {
-    drawPanel(18, 16, 512, 200, {
-      top: "rgba(22, 38, 44, 0.84)",
-      bottom: "rgba(12, 21, 27, 0.72)",
-    });
-
-    ctx.fillStyle = "#f4faf6";
-    ctx.font = "700 27px Avenir Next, Trebuchet MS, sans-serif";
-    ctx.fillText(`Nick the Tree Man`, 32, 50);
-    ctx.font = "600 16px Avenir Next, Trebuchet MS, sans-serif";
-    ctx.fillStyle = "rgba(218, 234, 239, 0.92)";
-    ctx.fillText(`Level ${state.level}/${MAX_LEVEL}  |  Cut ${state.totalCut}`, 34, 72);
-
-    drawMeter(
-      34,
-      96,
-      228,
-      15,
-      state.reputation / 100,
-      "#72d97f",
-      "#4dbf64",
-      "Reputation",
-      `${Math.round(state.reputation)}%`
-    );
-    drawMeter(
-      34,
-      132,
-      228,
-      15,
-      (state.wind + 0.85) / 1.7,
-      "#8ec8ff",
-      "#4f9ff5",
-      "Wind Pressure",
-      `${state.wind >= 0 ? "+" : ""}${state.wind.toFixed(2)}`
-    );
-    drawMeter(
-      34,
-      168,
-      228,
-      15,
-      clamp(state.bestFlow / 8, 0, 1),
-      "#f8d67a",
-      "#f2a93b",
-      "Flow Streak",
-      state.flowStreak > 0 ? `x${state.flowStreak}` : `best x${state.bestFlow}`
-    );
-
-    const districtName = state.district ? state.district.name : "District";
-    const adrenalineText =
-      state.adrenaline.timer > 0
-        ? `Adrenaline ${Math.ceil(state.adrenaline.timer * 10) / 10}s`
-        : "Adrenaline calm";
-    const modeLabel = state.controlMode === "axe" ? "Axe mode" : "Saw mode";
-    const showtimeLabel = state.showtime.active
-      ? "Fiddle+dance: ON"
-      : "Fiddle+dance: OFF";
-    ctx.fillStyle = "#d8eaf0";
-    ctx.font = "600 15px Avenir Next, Trebuchet MS, sans-serif";
-    ctx.fillText(districtName, 286, 111);
-    ctx.fillText(adrenalineText, 286, 136);
-    if (state.bossTreeId) {
-      const bossTree = state.trees.find((tree) => tree.id === state.bossTreeId);
-      const remaining = bossTree ? bossTree.branches.filter((b) => !b.cut).length : 0;
-      ctx.fillText(
-        `Boss: ${bossTree && !bossTree.fallen ? `active (${remaining} limbs)` : "down"}`,
-        286,
-        161
-      );
-    } else {
-      ctx.fillText("Boss: none", 286, 161);
-    }
-    ctx.fillText(modeLabel, 286, 186);
-    ctx.fillText(showtimeLabel, 286, 211);
-
-    const showtimeButton = getShowtimeButtonRect();
-    drawPanel(showtimeButton.x, showtimeButton.y, showtimeButton.w, showtimeButton.h, {
-      top: state.showtime.active ? "rgba(77, 58, 28, 0.88)" : "rgba(27, 45, 53, 0.84)",
-      bottom: state.showtime.active ? "rgba(56, 39, 20, 0.76)" : "rgba(16, 30, 38, 0.72)",
-      border: state.showtime.active
-        ? "rgba(255, 216, 153, 0.44)"
-        : "rgba(178, 211, 234, 0.3)",
-      radius: 12,
-    });
-    ctx.fillStyle = state.showtime.active ? "#ffe8bf" : "#d8edf8";
-    ctx.font = "700 15px Avenir Next, Trebuchet MS, sans-serif";
-    ctx.fillText(
-      state.showtime.active ? "Stop Fiddle Dance (V)" : "Play Fiddle + Dance (V)",
-      showtimeButton.x + 14,
-      showtimeButton.y + 27
-    );
-
-    if (state.contract) {
-      drawPanel(WORLD.width * 0.5 - 270, 16, 540, 70, {
-        top: "rgba(30, 42, 62, 0.84)",
-        bottom: "rgba(20, 30, 48, 0.7)",
-        border: "rgba(172, 203, 255, 0.28)",
-      });
-      const gustLabel = state.gust.active
-        ? `${state.gust.dir > 0 ? "Gust ->" : "<- Gust"} ${state.gust.strength.toFixed(2)}`
-        : `Next gust ${Math.max(0, state.gust.cooldown).toFixed(1)}s`;
-      ctx.fillStyle = "#edf4ff";
-      ctx.font = "700 22px Avenir Next, Trebuchet MS, sans-serif";
-      ctx.fillText(state.contract.title, WORLD.width * 0.5 - 252, 44);
-      ctx.font = "600 15px Avenir Next, Trebuchet MS, sans-serif";
-      const districtLabel = state.district ? state.district.name : "District";
-      ctx.fillText(
-        `${districtLabel}  |  ${state.contract.blurb}  |  ${gustLabel}`,
-        WORLD.width * 0.5 - 252,
-        67
-      );
-    }
-
-    const selected = getSelectedTree();
-    if (selected && state.mode === "playing") {
-      const direction = selected.wedge > 0 ? "Right" : selected.wedge < 0 ? "Left" : "None";
-      const tierLabel = state.activeTier === "high" ? "Upper" : "Lower";
-      const leftTierCount = selected.branches.filter(
-        (branch) => !branch.cut && branch.side < 0 && branch.tier === state.activeTier
-      ).length;
-      const rightTierCount = selected.branches.filter(
-        (branch) => !branch.cut && branch.side > 0 && branch.tier === state.activeTier
-      ).length;
-      const oldLady = getOldLadyCounts();
-      const catStatus = state.treeCat
-        ? state.treeCat.dying
-          ? "injured"
-          : state.treeCat.moving
-            ? "moving"
-            : "perched"
-        : "none";
-      const axe = selected.axe;
-      const axeTargetLabel =
-        axe && axe.targetSide !== 0 ? (axe.targetSide < 0 ? "Left" : "Right") : "Unset";
-      const axeStageLabel = axe ? axe.stage : "idle";
-      const safeLabel =
-        selected.safeDirections && selected.safeDirections.length === 2
-          ? "Both"
-          : selected.safeDirectionHint < 0
-            ? "Left"
-            : selected.safeDirectionHint > 0
-              ? "Right"
-              : "Unknown";
-
-      drawPanel(WORLD.width - 398, 16, 380, 344, {
-        top: "rgba(28, 37, 33, 0.82)",
-        bottom: "rgba(16, 26, 22, 0.72)",
-      });
-
-      ctx.fillStyle = "#f8f5dd";
-      ctx.font = "700 20px Avenir Next, Trebuchet MS, sans-serif";
-      ctx.fillText(`Selected: ${selected.id}`, WORLD.width - 380, 46);
-      ctx.font = "600 16px Avenir Next, Trebuchet MS, sans-serif";
-      const speciesLabel = `${selected.species ? selected.species.name : "Mixed"}${selected.isBoss ? " (Boss)" : ""}`;
-      ctx.fillText(`Species: ${speciesLabel}`, WORLD.width - 380, 72);
-      ctx.fillText(
-        `Imbalance: ${selected.imbalance >= 0 ? "+" : ""}${selected.imbalance.toFixed(2)}`,
-        WORLD.width - 380,
-        96
-      );
-      ctx.fillText(
-        `Mode: ${state.controlMode === "axe" ? "Axe" : "Saw"}  |  Wedge: ${direction}`,
-        WORLD.width - 380,
-        120
-      );
-      if (state.controlMode === "axe") {
-        ctx.fillText(
-          `Axe Target: ${axeTargetLabel}  Stage: ${axeStageLabel}`,
-          WORLD.width - 380,
-          144
-        );
-        ctx.fillText(
-          `Notch ${axe ? axe.notchHits : 0}/${axe ? axe.notchNeed : 0}  Back ${axe ? axe.backHits : 0}/${axe ? axe.backNeed : 0}`,
-          WORLD.width - 380,
-          168
-        );
-      } else {
-        ctx.fillText(`Tier: ${tierLabel}  |  Cut L ${leftTierCount}  R ${rightTierCount}`, WORLD.width - 380, 144);
-        ctx.fillText(`Damaged Limbs: ${selected.branches.filter((branch) => !branch.cut && getBranchDamageRatio(branch) > 0.01).length}`, WORLD.width - 380, 168);
-      }
-      ctx.fillText(`Safe Fall Direction: ${safeLabel}`, WORLD.width - 380, 192);
-      const proj = getProjectedFall(selected);
-      const projSide = proj.direction < 0 ? "Left" : "Right";
-      ctx.fillText(`Projected Drift: ${projSide} ${Math.round(proj.certainty * 100)}%`, WORLD.width - 380, 216);
-      const damagedBranchCount = selected.branches.filter(
-        (branch) => !branch.cut && getBranchDamageRatio(branch) > 0.01
-      ).length;
-      if (state.controlMode === "axe") {
-        ctx.fillText(`Damaged Limbs: ${damagedBranchCount}`, WORLD.width - 380, 240);
-      }
-      ctx.fillText(
-        `Old Ladies Safe: ${oldLady.saved}/${oldLady.total}`,
-        WORLD.width - 380,
-        264
-      );
-      ctx.fillText(`Tree Cat: ${catStatus}`, WORLD.width - 380, 288);
-
-      drawMeter(
-        WORLD.width - 380,
-        312,
-        344,
-        14,
-        clamp(Math.abs(selected.imbalance) / Math.max(0.22, autoFallThreshold(selected)), 0, 1),
-        "#ffd87b",
-        "#f2994f",
-        "Tip Risk",
-        `${Math.round(clamp(Math.abs(selected.imbalance) / Math.max(0.22, autoFallThreshold(selected)), 0, 1) * 100)}%`
-      );
-    }
-  }
-
-  function drawCallouts() {
-    if (state.callouts.length === 0) {
-      return;
-    }
-    const visible = state.callouts.slice(-2).reverse();
-    let y = WORLD.groundY - 82;
-    for (const callout of visible) {
-      const alpha = clamp(callout.life / Math.max(0.2, callout.maxLife), 0, 1);
-      const rise = (1 - alpha) * callout.drift;
-      const textY = y - rise;
-      drawPanel(30, textY - 26, 470, 34, {
-        top: `rgba(31, 45, 52, ${0.86 * alpha})`,
-        bottom: `rgba(16, 24, 31, ${0.78 * alpha})`,
-        border: `rgba(167, 201, 223, ${0.34 * alpha})`,
-        radius: 10,
-      });
-      ctx.fillStyle = callout.color;
-      ctx.font = "700 18px Avenir Next, Trebuchet MS, sans-serif";
-      ctx.fillText(callout.text, 44, textY - 2);
-      y -= 42;
-    }
-  }
-
-  function drawOverlayPanel(title, lines) {
-    ctx.fillStyle = "rgba(9, 18, 12, 0.72)";
-    ctx.fillRect(0, 0, WORLD.width, WORLD.height);
-
-    const panelW = 780;
-    const panelH = clamp(190 + lines.length * 38, 320, WORLD.height - 70);
-    const x = (WORLD.width - panelW) * 0.5;
-    const y = (WORLD.height - panelH) * 0.5;
-
-    drawPanel(x, y, panelW, panelH, {
-      top: "rgba(240, 248, 235, 0.97)",
-      bottom: "rgba(219, 235, 215, 0.95)",
-      border: "rgba(75, 108, 68, 0.45)",
-      radius: 18,
-    });
-
-    ctx.fillStyle = "rgba(28, 55, 31, 0.96)";
-    ctx.font = "800 56px Avenir Next, Trebuchet MS, sans-serif";
-    ctx.fillText(title, x + 44, y + 84);
-
-    ctx.fillStyle = "rgba(26, 50, 29, 0.9)";
-    ctx.font = "600 24px Avenir Next, Trebuchet MS, sans-serif";
-    let lineY = y + 136;
-    for (const line of lines) {
-      ctx.fillText(line, x + 44, lineY);
-      lineY += 37;
-    }
-  }
-
-  function drawMenuTutorialCard(x, y, w, h, title, lines, accent) {
-    drawPanel(x, y, w, h, {
-      top: "rgba(245, 250, 244, 0.95)",
-      bottom: "rgba(225, 238, 221, 0.94)",
-      border: "rgba(83, 112, 76, 0.38)",
-      radius: 14,
-    });
-    ctx.fillStyle = accent;
-    ctx.font = "800 24px Avenir Next, Trebuchet MS, sans-serif";
-    ctx.fillText(title, x + 18, y + 34);
-    ctx.fillStyle = "rgba(28, 47, 30, 0.9)";
-    ctx.font = "600 17px Avenir Next, Trebuchet MS, sans-serif";
-    let yy = y + 62;
-    for (const line of lines) {
-      ctx.fillText(line, x + 18, yy);
-      yy += 29;
-    }
-  }
-
-  function drawMenuKeyHint(x, y, key, detail, accent = false) {
-    const w = accent ? 170 : 152;
-    drawPanel(x, y, w, 54, {
-      top: accent ? "rgba(67, 84, 124, 0.92)" : "rgba(25, 38, 52, 0.88)",
-      bottom: accent ? "rgba(51, 67, 102, 0.88)" : "rgba(16, 25, 35, 0.82)",
-      border: accent ? "rgba(205, 225, 255, 0.4)" : "rgba(167, 189, 220, 0.28)",
-      radius: 10,
-    });
-    ctx.fillStyle = "#f2f6ff";
-    ctx.font = "800 16px Avenir Next, Trebuchet MS, sans-serif";
-    ctx.fillText(key, x + 12, y + 22);
-    ctx.font = "600 14px Avenir Next, Trebuchet MS, sans-serif";
-    ctx.fillStyle = "rgba(215, 229, 247, 0.92)";
-    ctx.fillText(detail, x + 12, y + 42);
-  }
-
-  function drawMenuTutorialOverlay() {
-    const now = performance.now() * 0.001;
-    const pulse = 0.25 + Math.sin(now * 3.2) * 0.13;
-
-    ctx.fillStyle = "rgba(8, 16, 18, 0.72)";
-    ctx.fillRect(0, 0, WORLD.width, WORLD.height);
-
-    const panelW = 1120;
-    const panelH = 630;
-    const x = (WORLD.width - panelW) * 0.5;
-    const y = (WORLD.height - panelH) * 0.5;
-
-    drawPanel(x, y, panelW, panelH, {
-      top: "rgba(231, 244, 232, 0.98)",
-      bottom: "rgba(208, 227, 207, 0.95)",
-      border: "rgba(74, 102, 68, 0.48)",
-      radius: 22,
-    });
-
-    ctx.fillStyle = "rgba(24, 50, 30, 0.98)";
-    ctx.font = "900 60px Avenir Next, Trebuchet MS, sans-serif";
-    ctx.fillText("NICK THE TREE MAN", x + 42, y + 78);
-    ctx.fillStyle = "rgba(46, 76, 52, 0.95)";
-    ctx.font = "700 27px Avenir Next, Trebuchet MS, sans-serif";
-    ctx.fillText("Town Tree Crew Bootcamp", x + 44, y + 112);
-    ctx.fillStyle = "rgba(42, 67, 43, 0.9)";
-    ctx.font = "600 20px Avenir Next, Trebuchet MS, sans-serif";
-    ctx.fillText(
-      "Tutorial mission: keep every trunk off homes, cars, and old ladies.",
-      x + 44,
-      y + 142
-    );
-
-    ctx.strokeStyle = `rgba(255, 230, 162, ${0.34 + pulse})`;
-    ctx.lineWidth = 5;
-    ctx.beginPath();
-    ctx.moveTo(x + 44, y + 160);
-    ctx.lineTo(x + panelW - 44, y + 160);
-    ctx.stroke();
-
-    const cardY = y + 184;
-    const cardGap = 18;
-    const cardW = (panelW - 88 - cardGap * 2) / 3;
-    drawMenuTutorialCard(
-      x + 28,
-      cardY,
-      cardW,
-      194,
-      "Step 1: Read The Lean",
-      [
-        "Pick trees with cursor or Tab.",
-        "Watch Safe Fall + Drift lines.",
-        "1/2 choose lower or upper tier.",
-        "Cats move branch-to-branch.",
-      ],
-      "#3d6d47"
-    );
-    drawMenuTutorialCard(
-      x + 28 + cardW + cardGap,
-      cardY,
-      cardW,
-      194,
-      "Step 2: Cut With Intent",
-      [
-        "Saw: A left, B/D right, or swipe.",
-        "Thick limbs take repeated hits.",
-        "X toggles Saw/Axe mode.",
-        "Axe appears in hand in Axe mode.",
-      ],
-      "#49609b"
-    );
-    drawMenuTutorialCard(
-      x + 28 + (cardW + cardGap) * 2,
-      cardY,
-      cardW,
-      194,
-      "Step 3: Drop It Safe",
-      [
-        "Axe mode: notch one side first.",
-        "Then back-cut opposite side.",
-        "Q/E bias wedge, W clears wedge.",
-        "Space jumps Nick out of danger.",
-      ],
-      "#8a5733"
-    );
-
-    const hintY = y + 398;
-    const hints = [
-      ["A / B / D", "Saw cuts by side", false],
-      ["1 / 2", "Select branch tier", false],
-      ["X", "Switch saw/axe", true],
-      ["Q / E / W", "Set or clear wedge", false],
-      ["TAB", "Cycle target tree", false],
-      ["SPACE", "Jump", false],
-    ];
-    let hx = x + 28;
-    for (const hint of hints) {
-      drawMenuKeyHint(hx, hintY, hint[0], hint[1], hint[2]);
-      hx += (hint[2] ? 170 : 152) + 12;
-    }
-
-    drawPanel(x + 28, y + 468, panelW - 56, 134, {
-      top: "rgba(30, 45, 60, 0.88)",
-      bottom: "rgba(17, 27, 38, 0.83)",
-      border: "rgba(182, 212, 244, 0.35)",
-      radius: 14,
-    });
-    ctx.fillStyle = "#eaf4ff";
-    ctx.font = "700 29px Avenir Next, Trebuchet MS, sans-serif";
-    ctx.fillText("Training Contract: Main Street Shift", x + 52, y + 509);
-    ctx.font = "600 19px Avenir Next, Trebuchet MS, sans-serif";
-    ctx.fillStyle = "rgba(208, 225, 244, 0.95)";
-    ctx.fillText(
-      "Goal: balance each tree and force clean falls without collateral damage.",
-      x + 52,
-      y + 538
-    );
-    ctx.fillStyle = "#ffdca8";
-    ctx.font = "800 34px Avenir Next, Trebuchet MS, sans-serif";
-    ctx.fillText("PRESS ENTER OR CLICK TO START SHIFT", x + 52, y + 580);
-    ctx.font = "600 17px Avenir Next, Trebuchet MS, sans-serif";
-    ctx.fillStyle = "rgba(201, 219, 235, 0.94)";
-    ctx.fillText("F toggles fullscreen • V starts fiddle dance mode", x + 52, y + 602);
-  }
-
-  function drawScreenFx() {
-    const vig = ctx.createRadialGradient(
-      WORLD.width * 0.5,
-      WORLD.height * 0.48,
-      WORLD.height * 0.18,
-      WORLD.width * 0.5,
-      WORLD.height * 0.5,
-      WORLD.width * 0.65
-    );
-    vig.addColorStop(0, "rgba(0, 0, 0, 0)");
-    vig.addColorStop(1, "rgba(9, 14, 11, 0.2)");
-    ctx.fillStyle = vig;
-    ctx.fillRect(0, 0, WORLD.width, WORLD.height);
-
-    ctx.strokeStyle = "rgba(255, 255, 255, 0.04)";
-    ctx.lineWidth = 1;
-    for (let i = 0; i < 12; i += 1) {
-      const y = 24 + i * 58 + Math.sin(state.elapsed * 0.6 + i) * 2;
-      ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(WORLD.width, y);
-      ctx.stroke();
-    }
-  }
-
   function drawScene() {
-    drawBackground();
-    drawAmbientParticles();
-    if (state.lightningFlash > 0) {
-      ctx.fillStyle = `rgba(238, 247, 255, ${state.lightningFlash * 1.9})`;
-      ctx.fillRect(0, 0, WORLD.width, WORLD.height);
+    TreeArt.background(ctx, state, WORLD);
+    if (state.mode === 'menu') {
+      TreeArt.menu(ctx, state, WORLD, menuTree, getBranchSegment, getTreeDisplayAngle);
+    } else {
+      drawAmbientParticles();
+      ctx.save(); ctx.translate(state.camera.x, state.camera.y);
+      drawWindTrails();
+      for (const hazard of state.hazards) drawHazard(hazard);
+      drawCrashBursts();
+      for (const tree of state.trees) TreeArt.tree(ctx, tree, state, getBranchSegment, getTreeDisplayAngle);
+      drawBirds(); drawTreeCat(); drawWoodChips(); drawSlashTrails();
+      TreeArt.nick(ctx, state, WORLD); drawNickNotes(); drawNickSpeechBubble();
+      for (const floater of state.floaters) {
+        ctx.save(); ctx.globalAlpha = Math.min(1, floater.life * 2);
+        ctx.textAlign = 'center'; ctx.font = '800 18px Avenir Next, sans-serif';
+        ctx.strokeStyle = '#285438'; ctx.lineWidth = 4; ctx.strokeText(floater.text, floater.x, floater.y);
+        ctx.fillStyle = '#fff0b9'; ctx.fillText(floater.text, floater.x, floater.y); ctx.restore();
+      }
+      ctx.restore();
     }
-
-    ctx.save();
-    ctx.translate(state.camera.x, state.camera.y);
-
-    drawWindTrails();
-    for (const hazard of state.hazards) {
-      drawHazard(hazard);
-    }
-    drawCrashBursts();
-
-    for (const tree of state.trees) {
-      drawTree(tree);
-    }
-
-    drawBirds();
-    drawTreeCat();
-    drawWoodChips();
-    drawSlashTrails();
-    drawNick();
-    drawNickNotes();
-    drawNickSpeechBubble();
-    ctx.restore();
-
-    drawScreenFx();
-    drawHud();
-    drawCallouts();
-
-    if (state.mode === "menu") {
-      drawMenuTutorialOverlay();
-    } else if (state.mode === "levelComplete" && state.levelReport) {
-      drawOverlayPanel(`Level ${state.level} Cleared`, [
-        `District: ${state.levelReport.district || (state.district ? state.district.name : "Unknown")}`,
-        `Style rank: ${state.levelReport.styleRank || "Steady"}`,
-        `Saved valuables: ${state.levelReport.saved}`,
-        `Old ladies safe: ${state.levelReport.oldLadiesSaved || 0}`,
-        `Damaged targets: ${state.levelReport.damaged}`,
-        `Old ladies hit: ${state.levelReport.oldLadiesHit || 0}`,
-        `Trunk crashes: ${state.levelReport.trunkCrashes || 0}`,
-        `Reputation penalty: -${state.levelReport.penalty}`,
-        `Flow bonus: +${state.levelReport.flowBonus || 0} (best x${state.levelReport.bestFlow || 0})`,
-        `Current reputation: ${state.levelReport.reputation}`,
-        "Press Enter for next level.",
-      ]);
-    } else if (state.mode === "gameover" && state.levelReport) {
-      const failTitle =
-        state.failReason === "cat"
-          ? "Cat Rescue Failed"
-          : state.failReason === "oldlady"
-            ? "Civic Disaster"
-            : "Reputation Lost";
-      drawOverlayPanel(failTitle, [
-        state.levelReport.failureMessage || "A critical failure occurred.",
-        `Damaged this round: ${state.levelReport.damaged}`,
-        `Old ladies hit: ${state.levelReport.oldLadiesHit || 0}`,
-        `Trunk crashes: ${state.levelReport.trunkCrashes || 0}`,
-        `Total limbs cut: ${state.totalCut}`,
-        `Total valuables saved: ${state.totalSaved}`,
-        "Press Enter to restart from level 1.",
-      ]);
-    } else if (state.mode === "victory" && state.levelReport) {
-      drawOverlayPanel("Town Saved", [
-        `Final district: ${state.district ? state.district.name : "Unknown"}`,
-        `Total valuables saved: ${state.totalSaved}`,
-        `Total damage events: ${state.totalDamaged}`,
-        `Final style rank: ${state.levelReport.styleRank || "Steady"}`,
-        `Best flow streak: x${state.bestFlow}`,
-        `Final reputation: ${state.reputation}`,
-        "Press Enter to play again.",
-      ]);
-    }
+    experience.render();
   }
 
   function toWorld(ev) {
@@ -4375,49 +3227,14 @@
   }
 
   function startPointer(ev) {
+    if (state.mode !== 'playing' || state.paused || state.overlay) return;
     const pos = toWorld(ev);
-    const now = performance.now();
-    if (state.mode === "playing") {
-      const showtimeButton = getShowtimeButtonRect();
-      if (pointInRect(pos.x, pos.y, showtimeButton)) {
-        toggleNickShowtime();
-        state.pointer.down = false;
-        resetPointerTrail();
-        state.pointer.lastTap = null;
-        return;
-      }
-    }
-    state.pointer.down = true;
-    state.pointer.x = pos.x;
-    state.pointer.y = pos.y;
-    state.pointer.path = [{ x: pos.x, y: pos.y, t: now }];
+    experience.unlockAudio();
+    canvas.setPointerCapture?.(ev.pointerId);
+    state.pointer.down = true; state.pointer.x = pos.x; state.pointer.y = pos.y;
+    state.pointer.path = [{ x: pos.x, y: pos.y, t: performance.now() }];
+    state.pointer.startX = pos.x; state.pointer.startY = pos.y; state.pointer.moved = false;
     updateSelectedTreeFromPointer();
-
-    if (state.mode === "menu") {
-      restartGame();
-      state.pointer.down = false;
-      resetPointerTrail();
-      state.pointer.lastTap = null;
-    } else if (state.mode === "playing") {
-      updateSelectedTreeFromPointer();
-      if (state.pointer.lastTap) {
-        const prev = state.pointer.lastTap;
-        const d = Math.sqrt(distanceSq(prev.x, prev.y, pos.x, pos.y));
-        const dtMs = now - prev.t;
-        if (dtMs > 0 && dtMs < 420 && d > 10) {
-          const inferredSpeed = (d / dtMs) * 1000;
-          state.pointer.lastSpeed = inferredSpeed;
-          applySlashSegment(
-            prev.x,
-            prev.y,
-            pos.x,
-            pos.y,
-            Math.max(inferredSpeed, MIN_SLASH_SPEED + 25)
-          );
-        }
-      }
-      state.pointer.lastTap = { x: pos.x, y: pos.y, t: now };
-    }
   }
 
   function movePointer(ev) {
@@ -4425,7 +3242,7 @@
     state.pointer.x = pos.x;
     state.pointer.y = pos.y;
 
-    if (state.pointer.down && state.mode === "playing") {
+    if (state.pointer.down && state.mode === "playing" && !state.paused && !state.overlay) {
       const path = state.pointer.path;
       const prev = path[path.length - 1];
       if (!prev) {
@@ -4434,6 +3251,7 @@
       }
       const d = Math.sqrt(distanceSq(prev.x, prev.y, pos.x, pos.y));
       if (d > 2) {
+        if (Math.hypot(pos.x - state.pointer.startX, pos.y - state.pointer.startY) > 8) state.pointer.moved = true;
         const now = performance.now();
         const dtMs = Math.max(1, now - prev.t);
         const speed = (d / dtMs) * 1000;
@@ -4454,125 +3272,44 @@
   }
 
   function toggleFullscreen() {
-    if (document.fullscreenElement === canvas) {
-      document.exitFullscreen();
-      return;
-    }
-    canvas.requestFullscreen().catch(() => {
-      // Ignore; fullscreen can fail if blocked by browser policy.
-    });
+    const shell = document.getElementById('game-shell');
+    if (document.fullscreenElement) { document.exitFullscreen().catch(() => {}); return; }
+    shell.requestFullscreen?.().catch(() => {});
   }
 
   function syncCanvasPresentation() {
-    if (document.fullscreenElement === canvas) {
-      canvas.style.width = "100vw";
-      canvas.style.height = "100vh";
-    } else {
-      canvas.style.width = "min(96vw, 1280px)";
-      canvas.style.height = "min(92vh, 720px)";
-    }
+    // CSS maintains the same 16:9 world in windowed, touch, and fullscreen layouts.
+    canvas.style.width = '100%'; canvas.style.height = '100%';
   }
 
   function handleKeyDown(ev) {
-    const rawKey = ev.key;
-    const key = rawKey.toLowerCase();
-    const isSpace = rawKey === " " || key === "spacebar" || key === "space";
-
-    if (key === "enter") {
-      if (state.mode === "menu") {
-        restartGame();
-        return;
-      }
-
-      if (state.mode === "levelComplete") {
-        startLevel(state.level + 1);
-        return;
-      }
-
-      if (state.mode === "gameover" || state.mode === "victory") {
-        restartGame();
-      }
-      return;
+    const key = ev.key.toLowerCase();
+    if (key === 'f') { ev.preventDefault(); toggleFullscreen(); return; }
+    if (key === 'm') { handleAction('sound'); return; }
+    if (key === 'escape' || key === 'p') {
+      if (state.overlay) { handleAction('close'); }
+      else handleAction('pause');
+      ev.preventDefault(); return;
     }
-
-    if (key === "f") {
-      toggleFullscreen();
-      return;
-    }
-
-    if (key === "r") {
-      restartGame();
-      return;
-    }
-
-    if (isSpace) {
+    if (state.overlay || state.paused) return;
+    // Let focused native buttons consume Enter/Space once; avoid a second gameplay action.
+    if (ev.target?.closest?.('button') && (key === 'enter' || (key === ' ' && state.mode !== 'playing'))) return;
+    if (key === 'enter') {
       ev.preventDefault();
-      if (state.mode === "menu") {
-        restartGame();
-        jumpNick();
-        return;
-      }
-      if (state.mode === "playing") {
-        jumpNick();
-      }
+      if (state.mode === 'menu') handleAction('start');
+      else if (state.mode === 'levelComplete') handleAction('continue');
+      else if (state.mode === 'gameover') handleAction('retry');
+      else if (state.mode === 'victory') handleAction('board');
       return;
     }
-
-    if (key === "tab" && state.mode === "playing") {
-      ev.preventDefault();
-      cycleSelectedTree(ev.shiftKey ? -1 : 1);
-      return;
-    }
-
-    if (state.mode !== "playing") {
-      return;
-    }
-
-    if (key === "v") {
-      toggleNickShowtime();
-      return;
-    }
-
-    if (key === "x") {
-      state.controlMode = state.controlMode === "saw" ? "axe" : "saw";
-      addCallout(
-        state.controlMode === "axe"
-          ? "Axe mode: notch + back-cut the trunk."
-          : "Saw mode: cut limbs by side/tier.",
-        state.controlMode === "axe" ? "#ffe0ad" : "#d3f4de",
-        1.6
-      );
-      return;
-    }
-
-    const selected = getSelectedTree();
-    if (!selected || selected.fallen) {
-      return;
-    }
-
-    if (key === "1" || key === "arrowdown") {
-      state.activeTier = "low";
-    } else if (key === "2" || key === "arrowup") {
-      state.activeTier = "high";
-    } else if (key === "a") {
-      if (state.controlMode === "axe") {
-        axeChopSelectedTree(-1);
-      } else {
-        cutSelectedTreeBranch(-1);
-      }
-    } else if (key === "d" || key === "b") {
-      if (state.controlMode === "axe") {
-        axeChopSelectedTree(1);
-      } else {
-        cutSelectedTreeBranch(1);
-      }
-    } else if (key === "q" || key === "arrowleft") {
-      selected.wedge = -1;
-    } else if (key === "e" || key === "arrowright") {
-      selected.wedge = 1;
-    } else if (key === "w") {
-      selected.wedge = 0;
-    }
+    if (key === 'r' && state.mode !== 'menu') { handleAction('retry'); return; }
+    if (state.mode !== 'playing') return;
+    if (key === 'tab') { ev.preventDefault(); cycleSelectedTree(ev.shiftKey ? -1 : 1); return; }
+    if (key === ' ' || key.startsWith('arrow')) ev.preventDefault();
+    if (ev.repeat && !['a','b','d'].includes(key)) return;
+    const mapping = { a: 'left', d: 'right', b: 'right', '1': 'low', arrowdown: 'low', '2': 'high', arrowup: 'high', q:'wedge-left', arrowleft:'wedge-left', e:'wedge-right', arrowright:'wedge-right', w:'wedge-none', v:'fiddle', ' ':'jump' };
+    if (key === 'x') handleAction(state.controlMode === 'saw' ? 'axe' : 'saw');
+    else if (mapping[key]) handleAction(mapping[key]);
   }
 
   function getTimeScale() {
@@ -4592,13 +3329,19 @@
   function frame(ts) {
     const dt = clamp((ts - lastTs) / 1000, 0, 0.05);
     lastTs = ts;
-    step(dt);
+    if (!manualTime) step(dt); else drawScene();
     requestAnimationFrame(frame);
   }
 
   function renderGameToText() {
     const payload = {
       mode: state.mode,
+      paused: state.paused,
+      overlay: state.overlay,
+      score: state.score,
+      jobTime: Number(state.jobTime.toFixed(2)),
+      job: JOBS[state.level - 1],
+      career: experience.record,
       coordinateSystem: "origin at top-left; +x right; +y down; groundY=620",
       level: state.level,
       failReason: state.failReason,
@@ -4649,6 +3392,7 @@
         perched: state.birds.filter((b) => b.perched).length,
         flying: state.birds.filter((b) => !b.perched).length,
       },
+      catRescued: state.catRescued,
       cat: state.treeCat
         ? {
             treeId: state.treeCat.treeId,
@@ -4656,6 +3400,7 @@
             x: Number(state.treeCat.x.toFixed(1)),
             y: Number(state.treeCat.y.toFixed(1)),
             moving: !!state.treeCat.moving,
+            rescuing: !!state.treeCat.rescuing,
             dying: !!state.treeCat.dying,
             fade: Number((state.treeCat.fade || 0).toFixed(2)),
           }
@@ -4725,6 +3470,7 @@
             Math.max(1, tree.branches.filter((b) => !b.cut).length)
           ).toFixed(2)
         ),
+        branches: tree.branches.filter(b => !b.cut).map(b => ({ id: b.id, side: b.side, tier: b.tier, hp: Number(b.hp.toFixed(2)), maxHp: b.maxHp, protected: isTreeCatOnBranch(tree.id, b.id), segment: getBranchSegment(tree,b) })),
         remainingBranches: tree.branches.filter((b) => !b.cut).length,
         remainingLowTier: tree.branches.filter(
           (b) => !b.cut && b.tier === "low"
@@ -4751,6 +3497,10 @@
       },
       levelReport: state.levelReport
         ? {
+            stars: state.levelReport.stars || 0,
+            seconds: state.levelReport.seconds || 0,
+            jobScore: state.levelReport.jobScore || 0,
+            cuts: state.levelReport.cuts || 0,
             district: state.levelReport.district || (state.district ? state.district.name : "Unknown"),
             styleRank: state.levelReport.styleRank || "Steady",
             flowBonus: state.levelReport.flowBonus || 0,
@@ -4769,6 +3519,8 @@
   window.render_game_to_text = renderGameToText;
 
   window.advanceTime = (ms) => {
+    manualTime = true;
+    ms = clamp(Number(ms) || 0, 0, 60000);
     const frames = Math.max(1, Math.round(ms / (1000 / 60)));
     const dt = ms / 1000 / frames;
     for (let i = 0; i < frames; i += 1) {
@@ -4785,7 +3537,12 @@
     movePointer(ev);
   });
 
-  canvas.addEventListener("pointerup", () => {
+  canvas.addEventListener('pointerup', (ev) => {
+    if (state.pointer.down && !state.pointer.moved && state.mode === 'playing' && !state.paused && !state.overlay) {
+      const pos = toWorld(ev);
+      if (state.controlMode === 'saw') applyTapCut(pos.x, pos.y);
+      else { const tree = getSelectedTree(); if (tree && Math.abs(pos.x - tree.x) < 100 && pos.y > tree.baseY - 140) handleAction(pos.x < tree.x ? 'left' : 'right'); }
+    }
     endPointer();
   });
 
@@ -4793,10 +3550,20 @@
     endPointer();
   });
 
+  canvas.addEventListener('lostpointercapture', endPointer);
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden && state.mode === 'playing') { state.paused = true; endPointer(); }
+    lastTs = performance.now();
+  });
   window.addEventListener("keydown", handleKeyDown);
   window.addEventListener("resize", syncCanvasPresentation);
   document.addEventListener("fullscreenchange", syncCanvasPresentation);
 
+  const menuTree = createTree('menu-tree', 1030, 1, CONTRACTS[0]);
+  menuTree.height = 365; menuTree.radius = 23; menuTree.species = TREE_SPECIES[0];
+  menuTree.branches = menuTree.branches.slice(0, 6);
+  for (const b of menuTree.branches) { b.length = Math.min(b.length, 126); b.deadness = .1; }
+  menuTree.sway = -.04;
   syncCanvasPresentation();
   drawScene();
   requestAnimationFrame(frame);
