@@ -269,6 +269,9 @@
     catRescued: false,
     toolSwing: 0,
     floaters: [],
+    dustClouds: [],
+    groundScars: [],
+    flowFlash: 0,
     lastActionAt: -999,
     level: 1,
     reputation: 100,
@@ -376,7 +379,7 @@
     if (action === 'continue' && state.mode === 'levelComplete') { startLevel(state.level + 1); return; }
     if (state.mode !== 'playing' || state.paused || state.overlay) return;
     if (action === 'saw' || action === 'axe') { state.controlMode = action; return; }
-    if (action === 'low' || action === 'high') { state.activeTier = action; return; }
+    if (action === 'low' || action === 'mid' || action === 'high') { if (action !== 'mid' || state.level >= 3) state.activeTier = action; return; }
     if (action === 'left' || action === 'right') {
       if (state.visualTime - state.lastActionAt < .12) return;
       state.lastActionAt = state.visualTime;
@@ -393,6 +396,111 @@
       selected.wedge = action === 'wedge-left' ? -1 : action === 'wedge-right' ? 1 : 0;
       experience.sound('chop');
     }
+  }
+
+  function spawnDustCloud(tree) {
+    const dir = Math.sign(tree.angle) || 1;
+    const tipX = tree.x + dir * tree.height * 0.48;
+    const count = 12 + Math.round(tree.height / 30);
+    for (let i = 0; i < count; i++) {
+      state.dustClouds.push({
+        x: tipX + rand(-tree.height * 0.3, tree.height * 0.3),
+        y: tree.baseY + rand(-8, 4),
+        vx: dir * rand(20, 120) + rand(-40, 40),
+        vy: -rand(30, 110),
+        size: rand(6, 22),
+        life: rand(0.5, 1.2),
+        maxLife: 0,
+        alpha: rand(0.3, 0.6),
+      });
+      const newest = state.dustClouds[state.dustClouds.length - 1];
+      newest.maxLife = newest.life;
+    }
+    if (state.dustClouds.length > 60) state.dustClouds.splice(0, state.dustClouds.length - 60);
+  }
+
+
+  function updateDustClouds(dt) {
+    for (const p of state.dustClouds) {
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.vy += 40 * dt;
+      p.vx *= 0.96;
+      p.size += dt * 12;
+      p.life -= dt;
+    }
+    state.dustClouds = state.dustClouds.filter(p => p.life > 0);
+  }
+
+
+  function drawGroundScars() {
+    for (const scar of state.groundScars) {
+      ctx.fillStyle = `rgba(40, 30, 20, ${scar.alpha * 0.3})`;
+      ctx.beginPath();
+      ctx.ellipse(scar.x, scar.y + 4, scar.w * 0.5, 6, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+
+  function drawDustClouds() {
+    for (const p of state.dustClouds) {
+      const t = clamp(p.life / p.maxLife, 0, 1);
+      ctx.fillStyle = `rgba(180, 165, 140, ${t * p.alpha})`;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+
+  function drawFlowFlash() {
+    if (!reducedMotion && state.flowFlash > 0) {
+      const intensity = state.flowFlash * 0.15;
+      ctx.fillStyle = `rgba(255, 240, 180, ${intensity})`;
+      ctx.fillRect(0, 0, WORLD.width, WORLD.height);
+    }
+  }
+
+
+  function drawFlowMeter() {
+    if (state.mode !== "playing" || state.flowStreak < 2) return;
+    const streak = state.flowStreak;
+    const timer = state.flowTimer;
+    const maxTimer = 3.5;
+    const pct = clamp(timer / maxTimer, 0, 1);
+    const cx = WORLD.width * 0.5;
+    const y = 106;
+
+    const glow = streak >= 5 ? 0.6 : streak >= 3 ? 0.35 : 0.15;
+    const textColor = streak >= 7 ? "#ffd080" : streak >= 5 ? "#f8e878" : streak >= 3 ? "#d8f8c4" : "#c8e8f0";
+
+    ctx.fillStyle = `rgba(255, 230, 150, ${glow * (0.5 + Math.sin(state.elapsed * 8) * 0.5)})`;
+    ctx.beginPath();
+    ctx.arc(cx, y, 36 + streak * 3, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = "rgba(0, 0, 0, 0.55)";
+    ctx.beginPath();
+    ctx.roundRect(cx - 50, y - 16, 100, 32, 8);
+    ctx.fill();
+
+    ctx.strokeStyle = `rgba(255, 230, 150, ${0.3 + pct * 0.4})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(cx, y, 28, -Math.PI * 0.5, -Math.PI * 0.5 + Math.PI * 2 * pct);
+    ctx.stroke();
+
+    ctx.fillStyle = textColor;
+    ctx.font = `800 ${22 + streak * 2}px Avenir Next, Trebuchet MS, sans-serif`;
+    ctx.textAlign = "center";
+    ctx.fillText(`x${streak}`, cx, y + 8);
+    ctx.textAlign = "left";
+  }
+
+
+  function vibrate(pattern) {
+    if (!reducedMotion && navigator.vibrate) navigator.vibrate(pattern);
   }
 
   function rand(min, max) {
@@ -422,14 +530,15 @@
   }
 
   function getBranchDurability(branch, treeIsBoss = false) {
+    const tierBonus = branch.tier === "high" ? 0.28 : branch.tier === "mid" ? 0.14 : 0;
     const base =
-      0.78 +
-      branch.thickness / 8.4 +
-      (branch.isBig ? 0.58 : 0) +
-      (branch.tier === "high" ? 0.22 : 0) +
-      (treeIsBoss ? 0.52 : 0) -
-      branch.deadness * 0.28;
-    return clamp(base, 0.95, treeIsBoss ? 4.4 : 3.2);
+      0.85 +
+      branch.thickness / 7.5 +
+      (branch.isBig ? 0.65 : 0) +
+      tierBonus +
+      (treeIsBoss ? 0.6 : 0) -
+      branch.deadness * 0.24;
+    return clamp(base, 1.0, treeIsBoss ? 5.2 : 3.8);
   }
 
   function createAxePlan(treeIsBoss, height, radius, deadness) {
@@ -465,7 +574,7 @@
   function createTree(id, x, level, contract) {
     const species = chooseSpecies(level);
     const height =
-      (rand(210, 310) + level * 10) * rand(species.heightMul[0], species.heightMul[1]);
+      (rand(230, 340) + level * 14) * rand(species.heightMul[0], species.heightMul[1]);
     const radius = rand(14, 24) * rand(species.radiusMul[0], species.radiusMul[1]);
     const deadness = clamp(
       rand(0.05, 0.42) + level * 0.02 + species.deadnessShift + (contract.deadnessBoost || 0),
@@ -476,64 +585,79 @@
     const lean = rand(-species.leanRange, species.leanRange);
     const trunkCurve = rand(-species.curveRange, species.curveRange);
     const branches = [];
+
     const tiers = [
-      { id: "low", baseHeight: rand(0.34 + species.lowTierShift, 0.5 + species.lowTierShift) },
-      { id: "high", baseHeight: rand(0.63 + species.highTierShift, 0.84 + species.highTierShift) },
-    ];
+      { id: "low", baseHeight: rand(0.22 + species.lowTierShift, 0.38 + species.lowTierShift) },
+      { id: "mid", baseHeight: rand(0.44, 0.58) },
+      { id: "high", baseHeight: rand(0.65 + species.highTierShift, 0.88 + species.highTierShift) },
+    ].filter(tier => level >= 3 || tier.id !== "mid");
 
     let branchIndex = 0;
     for (const tier of tiers) {
-      const clusterCount =
-        tier.id === "high"
-          ? (random() < 0.55 + species.clusterBoost * 0.5 ? 2 : 1)
-          : (random() < 0.28 + species.clusterBoost ? 2 : 1);
+      const baseClusterChance = tier.id === "high"
+        ? 0.6 + species.clusterBoost * 0.5 + level * 0.06
+        : tier.id === "mid"
+          ? 0.45 + level * 0.06
+          : 0.3 + species.clusterBoost + level * 0.04;
+      const clusterCount = random() < baseClusterChance ? (random() < 0.2 + level * 0.08 ? 3 : 2) : 1;
+
       for (let cluster = 0; cluster < clusterCount; cluster += 1) {
-        const clusterOffset = (cluster - (clusterCount - 1) / 2) * 0.09;
+        const clusterOffset = (cluster - (clusterCount - 1) / 2) * 0.07;
         const anchorRatio = clamp(
           tier.baseHeight + clusterOffset + rand(-0.03, 0.03),
-          0.24,
+          0.18,
           0.95
         );
         const bigChance =
-          0.2 +
-          level * 0.06 +
-          (tier.id === "high" ? 0.1 : 0.03) +
-          cluster * 0.04 +
+          0.15 +
+          level * 0.08 +
+          (tier.id === "high" ? 0.12 : tier.id === "mid" ? 0.06 : 0.02) +
+          cluster * 0.05 +
           (contract.bigBranchBoost || 0);
-        const clusterBig = random() < Math.min(0.75, bigChance);
+        const clusterBig = random() < Math.min(0.8, bigChance);
         const baseVOpen =
-          rand(0.3, 0.62) + (tier.id === "high" ? 0.05 : 0) + species.splayBias;
+          rand(0.18, 0.7) + (tier.id === "high" ? 0.06 : tier.id === "mid" ? 0.02 : -0.04) + species.splayBias;
+
+        const asymmetry = rand(-0.35, 0.35) * (0.5 + level * 0.1);
 
         for (const side of [-1, 1]) {
-          const isBig = clusterBig && random() < 0.76;
+          const sideSkip = side < 0
+            ? (asymmetry > 0.2 && random() < 0.25)
+            : (asymmetry < -0.2 && random() < 0.25);
+          if (sideSkip && branches.length > 2) continue;
+
+          const isBig = clusterBig && random() < (0.6 + level * 0.06);
           const branchDeadness = clamp(
             rand(0, 0.72) + deadness * 0.35 + (isBig ? 0.06 : 0),
             0,
             1
           );
-          const baseLength = tier.id === "high" ? rand(62, 122) : rand(50, 106);
-          const sideVariance = rand(0.92, 1.08);
+          const baseLength = tier.id === "high" ? rand(68, 138) : tier.id === "mid" ? rand(55, 118) : rand(44, 98);
+          const sideVariance = rand(0.82, 1.18);
+          const sideMassBias = side < 0 ? (1 + asymmetry * 0.3) : (1 - asymmetry * 0.3);
           const length =
             baseLength *
               sideVariance *
               species.branchLengthMul *
-              (isBig ? rand(1.28, 1.58) : rand(0.9, 1.12)) +
-            branchDeadness * 16 +
-            level * 2;
+              sideMassBias *
+              (isBig ? rand(1.3, 1.65) : rand(0.85, 1.15)) +
+            branchDeadness * 18 +
+            level * 3;
           const thickness = clamp(
-            (length / 26) * rand(0.8, 1.2) * (isBig ? 1.16 : 0.94),
+            (length / 24) * rand(0.75, 1.25) * (isBig ? 1.2 : 0.92),
             3.5,
-            10.8
+            12.5
           );
           const mass =
-            (length / 86) *
-            (0.88 + branchDeadness * 1.12) *
-            (isBig ? 1.45 : 1) *
-            species.branchMassMul;
+            (length / 80) *
+            (0.88 + branchDeadness * 1.2) *
+            (isBig ? 1.5 : 1) *
+            species.branchMassMul *
+            sideMassBias;
           const splayAngle = clamp(
-            baseVOpen + rand(-0.08, 0.08) - branchDeadness * 0.1,
-            0.14,
-            0.88
+            baseVOpen + rand(-0.12, 0.12) - branchDeadness * 0.1 + (side < 0 ? asymmetry * 0.06 : -asymmetry * 0.06),
+            0.08,
+            0.92
           );
 
           const branch = {
@@ -555,6 +679,30 @@
           branch.hitFlash = 0;
           branches.push(branch);
           branchIndex += 1;
+
+          if (isBig && length > 85 && random() < 0.3 + level * 0.1) {
+            const forkAngle = splayAngle + rand(-0.22, 0.22) + side * rand(0.05, 0.15);
+            const forkLength = length * rand(0.45, 0.7);
+            const forkBranch = {
+              id: `${id}-b${branchIndex}`,
+              side,
+              tier: tier.id,
+              cluster,
+              isBig: false,
+              mass: mass * rand(0.3, 0.5),
+              splayAngle: clamp(forkAngle, 0.08, 0.95),
+              heightRatio: clamp(anchorRatio + rand(0.03, 0.08), 0.2, 0.95),
+              length: forkLength,
+              thickness: clamp(thickness * 0.65, 3, 8),
+              deadness: clamp(branchDeadness + rand(-0.1, 0.15), 0, 1),
+              cut: false,
+            };
+            forkBranch.maxHp = getBranchDurability(forkBranch, false);
+            forkBranch.hp = forkBranch.maxHp;
+            forkBranch.hitFlash = 0;
+            branches.push(forkBranch);
+            branchIndex += 1;
+          }
         }
       }
     }
@@ -1585,7 +1733,7 @@
       trunkCrashesThisLevel: 0, elapsed: 0, jobTime: 0, contract, district, bossTreeId: null,
       skyPreset: SKY_PRESETS[contract.skyPreset], flowStreak: 0, bestFlow: 0, flowTimer: 0, lastCutAt: -999,
       windTrails: [], crashBursts: [], birds: [], treeCat: null, catGuardWarnAt: -999,
-      callouts: [], lightningFlash: 0, levelReport: null, slashEchoes: [], chips: [], floaters: [],
+      callouts: [], lightningFlash: 0, levelReport: null, slashEchoes: [], chips: [], floaters: [], dustClouds: [], groundScars: [], flowFlash: 0,
       nickY: 0, nickVy: 0, nickNotes: [], controlMode: 'saw', toolSwing: 0, lastActionAt: -999, catRescueTime: 0, catRescued: false,
       jobStartScore: state.score, jobStartCut: state.totalCut, jobStartSaved: state.totalSaved, jobStartDamaged: state.totalDamaged,
     });
@@ -1615,7 +1763,7 @@
       }
       for (const b of tree.branches) b.length = clamp(b.length, 55, tree.isBoss ? 146 : 119);
       // Begin with balanced limb mass so an untouched tree cannot randomly ruin a job.
-      const moments = [-1,1].map(side => tree.branches.filter(b => b.side === side).reduce((v,b) => v + b.mass * (.45 + b.heightRatio + (b.tier === 'high' ? .18 : 0)),0));
+      const moments = [-1,1].map(side => tree.branches.filter(b => b.side === side).reduce((v,b) => v + b.mass * (.45 + b.heightRatio + (b.tier === 'high' ? .2 : b.tier === 'mid' ? .1 : 0)),0));
       const mean = (moments[0] + moments[1]) / 2;
       for (const b of tree.branches) b.mass *= mean / Math.max(.01, moments[b.side < 0 ? 0 : 1]);
       if (tree.isBoss) state.bossTreeId = tree.id;
@@ -1726,7 +1874,7 @@
       const massFactor =
         branch.mass ||
         (branch.length / 88) * (0.65 + branch.deadness * 1.2) * (branch.isBig ? 1.4 : 1);
-      const tierBonus = branch.tier === "high" ? 0.18 : 0;
+      const tierBonus = branch.tier === "high" ? 0.2 : branch.tier === "mid" ? 0.1 : 0;
       const heightFactor = 0.45 + branch.heightRatio + tierBonus;
       branchMoment += branch.side * massFactor * heightFactor;
       liveCount += 1;
@@ -1776,6 +1924,7 @@
     }
     tree.fallDirection = direction;
     experience.sound("fall");
+    vibrate([20, 15, 30]);
 
     tree.falling = true;
     tree.angle = tree.sway;
@@ -1954,6 +2103,7 @@
     }
 
     experience.sound("cut");
+    vibrate(branch.isBig ? 18 : 10);
     state.toolSwing = .25;
     const damage = clamp(power, 0.22, 3.4);
     const nextHp = branch.hp - damage;
@@ -2134,6 +2284,7 @@
     tree.cutCount += 1;
     state.totalCut += 1;
     experience.sound("sever");
+    vibrate(branch.isBig ? 35 : 20);
     state.selectedTreeId = tree.id;
     if (state.elapsed - state.lastCutAt <= 3.5) {
       state.flowStreak += 1;
@@ -2143,6 +2294,8 @@
     state.lastCutAt = state.elapsed;
     state.flowTimer = 3.5;
     state.bestFlow = Math.max(state.bestFlow, state.flowStreak);
+    if (state.flowStreak >= 2) { state.flowFlash = Math.min(1, state.flowStreak * .15); experience.sound('flow'); }
+    if (state.flowStreak === 10) addCallout('A perfect rhythm. Flow ×10!', '#ffe4a2', 3);
     if (state.flowStreak === 3) {
       addCallout("Smooth sequence x3", "#d8f8c4", 1.6);
     } else if (state.flowStreak === 5) {
@@ -2153,7 +2306,7 @@
     addScore(75 * Math.min(4, 1 + Math.floor(state.flowStreak / 3)), seg.x2, seg.y2 - 22);
     const impactX = (seg.x1 + seg.x2) * 0.5;
     const impactY = (seg.y1 + seg.y2) * 0.5;
-    spawnWoodChips(impactX, impactY, branch.side);
+    spawnWoodChips(impactX, impactY, branch.side, branch.isBig ? 1.4 : 1);
     frightenBirdsNear(impactX, impactY, 150, branch.side);
     addTrauma(branch.isBig ? 0.08 : 0.05);
 
@@ -2371,6 +2524,8 @@
 
   function settleTreeImpact(tree) {
     experience.sound('land');
+    spawnDustCloud(tree);
+    state.groundScars.push({x: tree.x + Math.sign(tree.angle) * tree.height * .5, y: tree.baseY, w: tree.height * .6, alpha: .7});
     addTrauma(.28);
     spawnWoodChips(tree.x + Math.sin(tree.angle) * tree.height * .5, WORLD.groundY - 3, -Math.sign(tree.angle), 2.3);
     let collisions = 0;
@@ -2386,6 +2541,7 @@
     if (collisions) {
       state.trunkCrashesThisLevel += collisions;
       addTrauma(.6);
+      vibrate([40, 30, 60]);
       triggerImmediateFailure(oldLadyHits ? 'oldlady' : 'crash', oldLadyHits ? 'A neighbor was in the fall path.' : 'A protected home or car was hit.');
     } else {
       addScore(tree.isBoss ? 800 : 300, clamp(tree.x + Math.sign(tree.angle) * tree.height * .5, 80, 1200), WORLD.groundY - 60, tree.isBoss ? '+800 · GIANT DOWN' : '+300 · CLEAN LANDING');
@@ -2475,7 +2631,9 @@
       const imbalance = computeTreeImbalance(tree);
 
       if (!tree.falling && !tree.fallen) {
-        const swayTarget = tree.lean * 0.6 + state.wind * 0.035 + imbalance * 0.045;
+        const gustSway = state.gust.active ? state.gust.dir * state.gust.strength * .12 : 0;
+        const windOsc = reducedMotion ? 0 : Math.sin(state.elapsed * 1.8 + tree.x * .01) * .008 * (1 + Math.abs(state.wind) * 2);
+        const swayTarget = tree.lean * .6 + state.wind * .05 + imbalance * .05 + gustSway + windOsc;
         tree.sway = lerp(tree.sway, swayTarget, clamp(dt * 2.7, 0, 1));
 
         const canAutoFall = !tree.axe.targetSide && (tree.cutCount > 0 || Math.abs(tree.wedge) > 0);
@@ -2670,6 +2828,10 @@
   function update(dt) {
     if (state.paused || state.overlay) return;
     state.visualTime += dt;
+    updateDustClouds(dt);
+    state.flowFlash = Math.max(0, state.flowFlash - dt * 2.5);
+    for (const scar of state.groundScars) scar.alpha = Math.max(0, scar.alpha - dt * .15);
+    state.groundScars = state.groundScars.filter(scar => scar.alpha > .01);
     state.toolSwing = Math.max(0, state.toolSwing - dt);
     for (const floater of state.floaters) { floater.life -= dt; floater.y -= dt * 24; }
     state.floaters = state.floaters.filter(f => f.life > 0);
@@ -2849,43 +3011,81 @@
       ctx.arc(left + hazard.w - 18, top + hazard.h - 2, 4, 0, Math.PI * 2);
       ctx.fill();
     } else if (hazard.type === "oldlady") {
+      const panicking = !reducedMotion && !hazard.damaged && state.trees.some(t => t.falling && Math.abs(t.x - hazard.x) < t.height * 0.7);
+      const wobble = panicking ? Math.sin(state.elapsed * 18) * 3 : 0;
+      const armWave = panicking ? Math.sin(state.elapsed * 12) * 0.4 : 0;
+
       ctx.fillStyle = "#3a2d2d";
-      ctx.fillRect(hazard.x - 11, top + hazard.h - 12, 8, 8);
-      ctx.fillRect(hazard.x + 3, top + hazard.h - 12, 8, 8);
+      ctx.fillRect(hazard.x - 11 + wobble, top + hazard.h - 12, 8, 8);
+      ctx.fillRect(hazard.x + 3 + wobble, top + hazard.h - 12, 8, 8);
 
       ctx.fillStyle = style.body;
       ctx.beginPath();
-      ctx.roundRect(hazard.x - 14, top + 26, 28, 34, 10);
+      ctx.roundRect(hazard.x - 14 + wobble, top + 26, 28, 34, 10);
       ctx.fill();
 
       ctx.fillStyle = "#dfcfba";
       ctx.beginPath();
-      ctx.arc(hazard.x, top + 16, 10, 0, Math.PI * 2);
+      ctx.arc(hazard.x + wobble, top + 16, 10, 0, Math.PI * 2);
       ctx.fill();
 
-      ctx.fillStyle = "rgba(245, 238, 223, 0.96)";
+      ctx.fillStyle = panicking ? "#fff" : "rgba(245, 238, 223, 0.96)";
+      const eyeSize = panicking ? 3.2 : 2;
       ctx.beginPath();
-      ctx.arc(hazard.x - 4, top + 14, 2, 0, Math.PI * 2);
-      ctx.arc(hazard.x + 4, top + 14, 2, 0, Math.PI * 2);
+      ctx.arc(hazard.x - 4 + wobble, top + 14, eyeSize, 0, Math.PI * 2);
+      ctx.arc(hazard.x + 4 + wobble, top + 14, eyeSize, 0, Math.PI * 2);
       ctx.fill();
+      if (panicking) {
+        ctx.fillStyle = "#222";
+        ctx.beginPath();
+        ctx.arc(hazard.x - 4 + wobble, top + 14, 1.5, 0, Math.PI * 2);
+        ctx.arc(hazard.x + 4 + wobble, top + 14, 1.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
 
+      ctx.save();
+      ctx.translate(hazard.x + 12 + wobble, top + 28);
+      ctx.rotate(armWave);
       ctx.strokeStyle = "#9f8f7a";
       ctx.lineWidth = 2.2;
       ctx.beginPath();
-      ctx.moveTo(hazard.x + 12, top + 28);
-      ctx.lineTo(hazard.x + 17, top + 62);
+      ctx.moveTo(0, 0);
+      ctx.lineTo(5, 34);
       ctx.stroke();
       ctx.fillStyle = "#84745f";
       ctx.beginPath();
-      ctx.arc(hazard.x + 17, top + 63, 3, 0, Math.PI * 2);
+      ctx.arc(5, 35, 3, 0, Math.PI * 2);
       ctx.fill();
+      ctx.restore();
 
-      ctx.strokeStyle = "#2d1f3f";
-      ctx.lineWidth = 2.2;
-      ctx.beginPath();
-      ctx.moveTo(hazard.x - 8, top + 36);
-      ctx.quadraticCurveTo(hazard.x, top + 48, hazard.x + 8, top + 36);
-      ctx.stroke();
+      if (panicking) {
+        ctx.save();
+        ctx.translate(hazard.x - 12 + wobble, top + 28);
+        ctx.rotate(-armWave - 0.8);
+        ctx.strokeStyle = "#9f8f7a";
+        ctx.lineWidth = 2.2;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(-4, -18);
+        ctx.stroke();
+        ctx.restore();
+
+        ctx.strokeStyle = "rgba(220, 60, 60, 0.6)";
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(hazard.x - 3 + wobble, top + 19);
+        ctx.lineTo(hazard.x + 3 + wobble, top + 22);
+        ctx.moveTo(hazard.x - 3 + wobble, top + 22);
+        ctx.lineTo(hazard.x + 3 + wobble, top + 19);
+        ctx.stroke();
+      } else {
+        ctx.strokeStyle = "#2d1f3f";
+        ctx.lineWidth = 2.2;
+        ctx.beginPath();
+        ctx.moveTo(hazard.x - 8, top + 36);
+        ctx.quadraticCurveTo(hazard.x, top + 48, hazard.x + 8, top + 36);
+        ctx.stroke();
+      }
     }
 
     if (hazard.damaged) {
@@ -3196,11 +3396,12 @@
     } else {
       drawAmbientParticles();
       ctx.save(); ctx.translate(state.camera.x, state.camera.y);
+      drawGroundScars();
       drawWindTrails();
       for (const hazard of state.hazards) drawHazard(hazard);
       drawCrashBursts();
       for (const tree of state.trees) TreeArt.tree(ctx, tree, state, getBranchSegment, getTreeDisplayAngle);
-      drawBirds(); drawTreeCat(); drawWoodChips(); drawSlashTrails();
+      drawBirds(); drawTreeCat(); drawWoodChips(); drawSlashTrails(); drawDustClouds();
       TreeArt.nick(ctx, state, WORLD); drawNickNotes(); drawNickSpeechBubble();
       for (const floater of state.floaters) {
         ctx.save(); ctx.globalAlpha = Math.min(1, floater.life * 2);
@@ -3209,6 +3410,7 @@
         ctx.fillStyle = '#fff0b9'; ctx.fillText(floater.text, floater.x, floater.y); ctx.restore();
       }
       ctx.restore();
+      drawFlowFlash(); drawFlowMeter();
     }
     experience.render();
   }
@@ -3307,7 +3509,7 @@
     if (key === 'tab') { ev.preventDefault(); cycleSelectedTree(ev.shiftKey ? -1 : 1); return; }
     if (key === ' ' || key.startsWith('arrow')) ev.preventDefault();
     if (ev.repeat && !['a','b','d'].includes(key)) return;
-    const mapping = { a: 'left', d: 'right', b: 'right', '1': 'low', arrowdown: 'low', '2': 'high', arrowup: 'high', q:'wedge-left', arrowleft:'wedge-left', e:'wedge-right', arrowright:'wedge-right', w:'wedge-none', v:'fiddle', ' ':'jump' };
+    const mapping = { a: 'left', d: 'right', b: 'right', '1': 'low', arrowdown: 'low', '2': state.level >= 3 ? 'mid' : 'high', '3': 'high', arrowup: 'high', q:'wedge-left', arrowleft:'wedge-left', e:'wedge-right', arrowright:'wedge-right', w:'wedge-none', v:'fiddle', ' ':'jump' };
     if (key === 'x') handleAction(state.controlMode === 'saw' ? 'axe' : 'saw');
     else if (mapping[key]) handleAction(mapping[key]);
   }
@@ -3317,7 +3519,7 @@
       return 1;
     }
     const t = clamp(state.adrenaline.timer / state.adrenaline.duration, 0, 1);
-    return lerp(1, 0.58, t);
+    return lerp(1, 0.58, Math.sin(t * Math.PI));
   }
 
   function step(dt) {
@@ -3475,6 +3677,7 @@
         remainingLowTier: tree.branches.filter(
           (b) => !b.cut && b.tier === "low"
         ).length,
+        remainingMidTier: tree.branches.filter(b => !b.cut && b.tier === "mid").length,
         remainingHighTier: tree.branches.filter(
           (b) => !b.cut && b.tier === "high"
         ).length,

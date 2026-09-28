@@ -439,3 +439,9 @@ Original prompt: Build a game where you play as Nick the Tree Man - cut limbs fr
 - Added working npm dev/start/check/test scripts and a self-contained temporary server for browser tests. Updated README with controls, scoring, progression, architecture, and test hooks.
 - No blocking TODOs. Optional future work: additional authored neighborhoods and custom challenge jobs. Current five-job campaign, controls, saves, and audiovisual presentation are complete.
 - Final required skill-client run completed and its latest screenshot/text state were inspected: playing on job 1, branch damage visible, two trees, and no errors-*.json. Final syntax and git diff whitespace checks also pass.
+
+## Push-time integration with existing GitHub changes
+- Before pushing, verified the authenticated GitHub account owns joe-at-heirloom/nickthetreeman.github.io and has ADMIN permission. Fetched codex/main and found newer merged improvements through 2b14ba7.
+- Merged the remote history without rewriting it. Kept the woodland campaign/interface while integrating forked and more varied branches, stronger limb durability, a middle tier from job 3 onward, optional haptics, impact dust and ground marks, gust sway, neighbor reactions, flow feedback, and eased slow motion.
+- Fixed the incoming tier-generation edge case so early jobs retain lower and upper branches; later jobs expose Lower/Middle/Upper controls with 1/2/3.
+- Re-ran the complete browser campaign and required skill client after integration. All five jobs, later middle-tier selection, original controls, cat rescue, failure/retry, persistence, fullscreen, and mobile layout pass with zero browser errors. Reviewed the latest gameplay and giant-tree screenshots. Syntax and whitespace checks pass.

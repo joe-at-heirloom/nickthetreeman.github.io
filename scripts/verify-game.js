@@ -109,6 +109,12 @@ const assert = require('node:assert/strict');
     await action('continue'); current=await state();
     assert.equal(current.level,level);
     assert(current.trees.every(t=>t.safeDirections.length>0),`job ${level} is solvable`);
+    if(level>=3){
+      assert(current.trees.some(tree=>tree.branches.some(branch=>branch.tier==='mid')),'later jobs retain upstream middle branches');
+      await action('mid');assert.equal((await state()).activeTier,'mid');
+      await key('3');assert.equal((await state()).activeTier,'high');
+      await key('1');
+    }
     if(level===2){
       assert(current.cat,'second job includes a rescue cat');
       const catTree=current.trees.find(t=>t.id===current.cat.treeId),branch=catTree.branches.find(b=>b.id===current.cat.branchId);

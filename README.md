@@ -13,7 +13,7 @@ Open **http://127.0.0.1:5173**. You can also open `index.html` directly in a bro
 
 ## The job
 
-Fell every tree without hitting houses, cars, or neighbors. The selected tree's striped green landing zone marks a safe direction. Cut branches on the opposite side to shift its balance, or make an axe notch on the landing side and back-cut from the opposite side. Heavy limbs need multiple hits. Wedges, wind, tree size, and dead wood all affect balance.
+Fell every tree without hitting houses, cars, or neighbors. The selected tree's striped green landing zone marks a safe direction. Cut branches on the opposite side to shift its balance, or make an axe notch on the landing side and back-cut from the opposite side. Heavy limbs need multiple hits; later jobs add forked limbs and a middle branch tier. Wedges, wind, tree size, and dead wood all affect balance.
 
 The five jobs progress from a guided morning in Cedar Hollow through stormy Harbor Crossing, Orchard Lane, Museum Row, and the Heritage Giant. Each has a repeatable layout, its own time target, and at least one safe fall direction for every tree. A failed job can be retried immediately without replaying earlier jobs.
 
@@ -33,7 +33,7 @@ Every essential action also has an on-screen button for mouse and touch.
 | --- | --- |
 | Start / next job / retry after failure | Enter |
 | Cut left / right | A / D (B also cuts right) |
-| Lower / upper branches | 1 / 2 or Down / Up |
+| Lower / middle / upper branches | 1 / 2 / 3; jobs 1–2 also use 2 for upper. Down / Up select lower / upper. |
 | Switch saw / axe | X |
 | Wedge left / clear / right | Q / W / E or Left / Right |
 | Select next / previous tree | Tab / Shift+Tab |
